@@ -1,7 +1,44 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { discourseService } from "../services/discourseService"
 
 export default function CommunityDetails({ community }) {
   const [activeTab, setActiveTab] = useState("Community")
+  const [topics, setTopics] = useState([])
+  const [newPost, setNewPost] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (activeTab === "Community") {
+      loadTopics()
+    }
+  }, [activeTab])
+
+  const loadTopics = async () => {
+    setLoading(true)
+    try {
+      const data = await discourseService.getLatestTopics()
+      setTopics(data.topic_list.topics)
+    } catch (error) {
+      console.error("Error loading topics:", error)
+    }
+    setLoading(false)
+  }
+
+  const handleCreatePost = async () => {
+    if (!newPost.trim()) return
+
+    try {
+      await discourseService.createTopic(
+        `New post in ${community.name}`,
+        newPost,
+        community.category_id
+      )
+      setNewPost("")
+      loadTopics()
+    } catch (error) {
+      console.error("Error creating post:", error)
+    }
+  }
 
   const stats = {
     Members: "5.2k",
@@ -82,14 +119,41 @@ export default function CommunityDetails({ community }) {
               <div className="grid grid-cols-3 gap-6">
                 {/* Main Content */}
                 <div className="col-span-2">
-                  <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                    <textarea
-                      placeholder="Write something..."
-                      className="w-full p-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      rows="3"
-                    />
-                  </div>
-                  {/* Feed content would go here */}
+                  {activeTab === "Community" && (
+                    <>
+                      <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                        <textarea
+                          value={newPost}
+                          onChange={(e) => setNewPost(e.target.value)}
+                          placeholder="Start a discussion..."
+                          className="w-full p-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          rows="3"
+                        />
+                        <button
+                          onClick={handleCreatePost}
+                          className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        >
+                          Post
+                        </button>
+                      </div>
+
+                      {loading ? (
+                        <div className="text-center py-4">Loading...</div>
+                      ) : (
+                        <div className="space-y-4">
+                          {topics.map((topic) => (
+                            <div key={topic.id} className="bg-white p-4 rounded-lg border">
+                              <h3 className="font-semibold mb-2">{topic.title}</h3>
+                              <div className="flex justify-between text-sm text-gray-500">
+                                <span>{topic.reply_count} replies</span>
+                                <span>{new Date(topic.created_at).toLocaleDateString()}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
 
                 {/* Sidebar */}

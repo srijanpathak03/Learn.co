@@ -1,10 +1,13 @@
 "use client"
 
 import { Search } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { discourseService } from "../services/discourseService"
 
 export default function Home({ onCommunitySelect }) {
   const [selectedCategory, setSelectedCategory] = useState("All")
+  const [communities, setCommunities] = useState([])
+  const [loading, setLoading] = useState(true)
 
   const categories = [
     { name: "All", icon: "" },
@@ -18,37 +21,31 @@ export default function Home({ onCommunitySelect }) {
     { name: "Self-improvement", icon: "📚" },
   ]
 
-  const communities = [
-    {
-      id: 1,
-      name: "Brotherhood Of Scent",
-      image: "https://picsum.photos/seed/bos/800/400",
-      icon: "https://picsum.photos/seed/bos-icon/80/80",
-      description:
-        "#1 Fragrance Community 🏆 Our mission is to help YOU leverage the power of scent to become the man you know yourself to be",
-      members: "5.2k",
-      pricing: "Free",
-    },
-    {
-      id: 2,
-      name: "The Lady Change",
-      image: "https://picsum.photos/seed/tlc/800/400",
-      icon: "https://picsum.photos/seed/tlc-icon/80/80",
-      description:
-        "THE #1 community for menopausal (peri & post) women to come together, lose weight, get healthier and regain their confidence",
-      members: "1.3k",
-      pricing: "$49/month",
-    },
-    {
-      id: 3,
-      name: "Calligraphy Skool",
-      image: "https://picsum.photos/seed/calli/800/400",
-      icon: "https://picsum.photos/seed/calli-icon/80/80",
-      description: "The #1 Community for Modern Calligraphy ✍️ It's fun, easy, relaxing, and rewarding 🎨",
-      members: "1.1k",
-      pricing: "$9/month",
-    },
-  ]
+  useEffect(() => {
+    loadCommunities()
+  }, [])
+
+  const loadCommunities = async () => {
+    try {
+      const data = await discourseService.getCategories()
+      const formattedCommunities = data.category_list.categories.map(category => ({
+        id: category.id,
+        name: category.name,
+        image: category.uploaded_background_url || "https://picsum.photos/seed/discourse/800/400",
+        icon: category.uploaded_logo_url || "https://picsum.photos/seed/discourse-icon/80/80",
+        description: category.description,
+        members: `${category.topic_count} topics`,
+        pricing: "Free",
+        // Keep Discourse specific data for later use
+        discourse_data: category
+      }))
+      setCommunities(formattedCommunities)
+    } catch (error) {
+      console.error("Error loading communities:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -135,7 +132,7 @@ export default function Home({ onCommunitySelect }) {
                   </div>
                   <p className="text-gray-600 text-sm mb-4">{community.description}</p>
                   <div className="flex items-center justify-between text-sm text-gray-500">
-                    <span>{community.members} Members</span>
+                    <span>{community.members}</span>
                     <span>{community.pricing}</span>
                   </div>
                 </div>
