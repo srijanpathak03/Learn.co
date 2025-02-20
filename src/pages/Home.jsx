@@ -3,23 +3,15 @@
 import { Search } from "lucide-react"
 import { useState, useEffect } from "react"
 import { discourseService } from "../services/discourseService"
+import CreateCommunityModal from '../components/CreateCommunityModal'
 
 export default function Home({ onCommunitySelect }) {
   const [selectedCategory, setSelectedCategory] = useState("All")
   const [communities, setCommunities] = useState([])
   const [loading, setLoading] = useState(true)
-
-  const categories = [
-    { name: "All", icon: "" },
-    { name: "Hobbies", icon: "🎨" },
-    { name: "Music", icon: "🎵" },
-    { name: "Money", icon: "💰" },
-    { name: "Spirituality", icon: "🙏" },
-    { name: "Tech", icon: "💻" },
-    { name: "Health", icon: "🌟" },
-    { name: "Sports", icon: "⚽" },
-    { name: "Self-improvement", icon: "📚" },
-  ]
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [isSearching, setIsSearching] = useState(false)
 
   useEffect(() => {
     loadCommunities()
@@ -28,23 +20,95 @@ export default function Home({ onCommunitySelect }) {
   const loadCommunities = async () => {
     try {
       const data = await discourseService.getCategories()
-      const formattedCommunities = data.category_list.categories.map(category => ({
-        id: category.id,
-        name: category.name,
-        image: category.uploaded_background_url || "https://picsum.photos/seed/discourse/800/400",
-        icon: category.uploaded_logo_url || "https://picsum.photos/seed/discourse-icon/80/80",
-        description: category.description,
-        members: `${category.topic_count} topics`,
-        pricing: "Free",
-        // Keep Discourse specific data for later use
-        discourse_data: category
-      }))
-      setCommunities(formattedCommunities)
+      // Find the General category
+      const generalCategory = data.category_list.categories.find(
+        category => category.name === "General"
+      )
+
+      if (generalCategory) {
+        // Transform topics into our community format
+        const formattedCommunities = generalCategory.topics.map(topic => ({
+          id: topic.id,
+          name: topic.title,
+          image: topic.image_url || "https://picsum.photos/seed/discourse/800/400",
+          icon: topic.posters?.[0]?.user?.avatar_template?.replace("{size}", "80") || "https://picsum.photos/seed/discourse-icon/80/80",
+          description: topic.excerpt || "No description available",
+          members: `${topic.posts_count} posts`,
+          pricing: "Free",
+          // Keep original data for reference
+          discourse_data: topic
+        }))
+        setCommunities(formattedCommunities)
+      }
     } catch (error) {
       console.error("Error loading communities:", error)
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleCreateCommunity = async (formData) => {
+    try {
+      await discourseService.createCommunity(formData)
+      // Reload communities after creating a new one
+      loadCommunities()
+    } catch (error) {
+      console.error('Error creating community:', error)
+      // You might want to add proper error handling/notification here
+    }
+  }
+
+  const categories = [
+    { name: "All", icon: "" },
+    { name: "Latest", icon: "🕒" },
+    { name: "Top", icon: "🏆" },
+    { name: "Unread", icon: "📬" },
+  ]
+
+  const debounce = (func, wait) => {
+    let timeout
+    return (...args) => {
+      clearTimeout(timeout)
+      timeout = setTimeout(() => func.apply(this, args), wait)
+    }
+  }
+
+  const handleSearch = async (query) => {
+    if (!query.trim()) {
+      loadCommunities()
+      return
+    }
+
+    setIsSearching(true)
+    try {
+      const searchResults = await discourseService.search(query)
+      
+      // Transform search results into our community format
+      const formattedResults = searchResults.topics.map(topic => ({
+        id: topic.id,
+        name: topic.title,
+        image: topic.image_url || "https://picsum.photos/seed/discourse/800/400",
+        icon: topic.posters?.[0]?.user?.avatar_template?.replace("{size}", "80") || "https://picsum.photos/seed/discourse-icon/80/80",
+        description: topic.excerpt || "No description available",
+        members: `${topic.posts_count} posts`,
+        pricing: "Free",
+        discourse_data: topic
+      }))
+
+      setCommunities(formattedResults)
+    } catch (error) {
+      console.error("Error searching communities:", error)
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  const debouncedSearch = debounce(handleSearch, 300)
+
+  const handleSearchInput = (e) => {
+    const query = e.target.value
+    setSearchQuery(query)
+    debouncedSearch(query)
   }
 
   return (
@@ -57,7 +121,17 @@ export default function Home({ onCommunitySelect }) {
               Auto<span className="text-blue-500">Movie</span><span className="text-orange-500">Creator</span>
             </span>
           </a>
-          {/* <button className="px-6 py-2 border rounded-lg hover:bg-gray-50">LOG IN</button> */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Create Community
+            </button>
+            <button className="px-6 py-2 border rounded-lg hover:bg-gray-50">
+              LOG IN
+            </button>
+          </div>
         </div>
       </header>
 
@@ -66,12 +140,9 @@ export default function Home({ onCommunitySelect }) {
         <div className="max-w-7xl mx-auto">
           {/* Hero Section */}
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold mb-2">Discover communities</h1>
+            <h1 className="text-4xl font-bold mb-2">Auto Movie Creator Community</h1>
             <p className="text-gray-600">
-              or{" "}
-              <a href="#" className="text-blue-500 hover:underline">
-                create your own
-              </a>
+              Join discussions and share your experience
             </p>
           </div>
 
@@ -80,9 +151,16 @@ export default function Home({ onCommunitySelect }) {
             <Search className="absolute left-4 top-3.5 h-5 w-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Search for anything"
+              value={searchQuery}
+              onChange={handleSearchInput}
+              placeholder="Search discussions"
               className="w-full h-12 pl-12 pr-4 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
+            {isSearching && (
+              <div className="absolute right-4 top-3.5">
+                <div className="animate-spin h-5 w-5 border-2 border-blue-500 rounded-full border-t-transparent"></div>
+              </div>
+            )}
           </div>
 
           {/* Categories */}
@@ -103,44 +181,57 @@ export default function Home({ onCommunitySelect }) {
             ))}
           </div>
 
-          {/* Communities Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {communities.map((community) => (
-              <div
-                key={community.id}
-                onClick={() => onCommunitySelect(community)}
-                className="bg-white rounded-lg overflow-hidden border hover:shadow-lg transition-shadow cursor-pointer"
-              >
-                <div className="relative">
-                  <img
-                    src={community.image || "/placeholder.svg"}
-                    alt={community.name}
-                    className="w-full h-48 object-cover"
-                  />
-                  <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded-full text-sm">
-                    #{community.id}
-                  </div>
-                </div>
-                <div className="p-4">
-                  <div className="flex items-center gap-3 mb-3">
+          {/* Topics Grid */}
+          {loading ? (
+            <div className="text-center py-12">Loading discussions...</div>
+          ) : communities.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              {searchQuery ? "No results found" : "No discussions available"}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {communities.map((topic) => (
+                <div
+                  key={topic.id}
+                  onClick={() => onCommunitySelect(topic)}
+                  className="bg-white rounded-lg overflow-hidden border hover:shadow-lg transition-shadow cursor-pointer"
+                >
+                  <div className="aspect-video relative">
                     <img
-                      src={community.icon || "/placeholder.svg"}
-                      alt={`${community.name} icon`}
-                      className="w-10 h-10 rounded-lg"
+                      src={topic.image_url || `https://placehold.co/600x400/${topic.discourse_data?.color || '25AAE2'}/FFFFFF?text=${encodeURIComponent(topic.name)}`}
+                      alt={topic.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = `https://placehold.co/600x400/${topic.discourse_data?.color || '25AAE2'}/FFFFFF?text=${encodeURIComponent(topic.name)}`;
+                      }}
                     />
-                    <h3 className="font-semibold">{community.name}</h3>
                   </div>
-                  <p className="text-gray-600 text-sm mb-4">{community.description}</p>
-                  <div className="flex items-center justify-between text-sm text-gray-500">
-                    <span>{community.members}</span>
-                    <span>{community.pricing}</span>
+                  <div className="p-4">
+                    <h3 className="font-semibold text-lg mb-2">{topic.name}</h3>
+                    <p className="text-gray-600 text-sm mb-4 line-clamp-2">
+                      {topic.description}
+                    </p>
+                    <div className="flex items-center justify-between text-sm text-gray-500">
+                      <span>{topic.members}</span>
+                      <span>
+                        {new Date(topic.discourse_data.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </main>
+
+      {/* Create Community Modal */}
+      <CreateCommunityModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSubmit={handleCreateCommunity}
+      />
     </div>
   )
 }

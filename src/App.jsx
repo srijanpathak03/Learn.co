@@ -1,6 +1,6 @@
 import { useState } from "react"
 import Home from "./pages/Home"
-import CommunityDetails from "./pages/CommunityDetails"
+import CommunityView from "./components/CommunityView"
 
 function App() {
   const [selectedCommunity, setSelectedCommunity] = useState(null)
@@ -8,7 +8,7 @@ function App() {
   return (
     <div className="app">
       {selectedCommunity ? (
-        <CommunityDetails 
+        <CommunityView 
           community={selectedCommunity} 
           onBack={() => setSelectedCommunity(null)}
         />
