@@ -17,25 +17,36 @@ export default function Home({ onCommunitySelect }) {
     loadCommunities()
   }, [])
 
+  // Helper function to construct avatar URL
+  const getAvatarUrl = (avatarTemplate) => {
+    if (!avatarTemplate) return "https://picsum.photos/seed/discourse-icon/80/80";
+    
+    // If the avatar path starts with 'http', it's already a full URL
+    if (avatarTemplate.startsWith('http')) return avatarTemplate;
+    
+    // Handle letter avatars and regular avatars
+    // The avatarTemplate will be like "/letter_avatar_proxy/v4/letter/s/ea5d25/{size}.png"
+    // or "/user_avatar/forum.local/username/{size}/ID.png"
+    return `/api${avatarTemplate.replace("{size}", "80")}`;
+  };
+
   const loadCommunities = async () => {
     try {
       const data = await discourseService.getCategories()
-      // Find the General category
       const generalCategory = data.category_list.categories.find(
         category => category.name === "General"
       )
 
       if (generalCategory) {
-        // Transform topics into our community format
         const formattedCommunities = generalCategory.topics.map(topic => ({
           id: topic.id,
           name: topic.title,
-          image: topic.image_url || "https://picsum.photos/seed/discourse/800/400",
-          icon: topic.posters?.[0]?.user?.avatar_template?.replace("{size}", "80") || "https://picsum.photos/seed/discourse-icon/80/80",
+          image: topic.image_url || `https://placehold.co/600x400/${topic.color || '25AAE2'}/FFFFFF?text=${encodeURIComponent(topic.title)}`,
+          // Use the helper function for avatar URL
+          icon: getAvatarUrl(topic.posters?.[0]?.user?.avatar_template),
           description: topic.excerpt || "No description available",
           members: `${topic.posts_count} posts`,
           pricing: "Free",
-          // Keep original data for reference
           discourse_data: topic
         }))
         setCommunities(formattedCommunities)
@@ -83,12 +94,12 @@ export default function Home({ onCommunitySelect }) {
     try {
       const searchResults = await discourseService.search(query)
       
-      // Transform search results into our community format
       const formattedResults = searchResults.topics.map(topic => ({
         id: topic.id,
         name: topic.title,
-        image: topic.image_url || "https://picsum.photos/seed/discourse/800/400",
-        icon: topic.posters?.[0]?.user?.avatar_template?.replace("{size}", "80") || "https://picsum.photos/seed/discourse-icon/80/80",
+        image: topic.image_url || `https://placehold.co/600x400/${topic.color || '25AAE2'}/FFFFFF?text=${encodeURIComponent(topic.title)}`,
+        // Use the helper function for avatar URL
+        icon: getAvatarUrl(topic.posters?.[0]?.user?.avatar_template),
         description: topic.excerpt || "No description available",
         members: `${topic.posts_count} posts`,
         pricing: "Free",
@@ -208,7 +219,18 @@ export default function Home({ onCommunitySelect }) {
                     />
                   </div>
                   <div className="p-4">
-                    <h3 className="font-semibold text-lg mb-2">{topic.name}</h3>
+                    <div className="flex items-center gap-3 mb-2">
+                      <img
+                        src={topic.icon}
+                        alt={`${topic.name} avatar`}
+                        className="w-8 h-8 rounded-full object-cover"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = "https://picsum.photos/seed/discourse-icon/80/80";
+                        }}
+                      />
+                      <h3 className="font-semibold text-lg">{topic.name}</h3>
+                    </div>
                     <p className="text-gray-600 text-sm mb-4 line-clamp-2">
                       {topic.description}
                     </p>

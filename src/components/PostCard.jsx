@@ -8,11 +8,17 @@ export default function PostCard({ post, index, onReplyClick }) {
   const [isLiked, setIsLiked] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
+  // Helper function to construct avatar URL
+  const getAvatarUrl = (avatarTemplate) => {
+    if (!avatarTemplate) return "https://picsum.photos/seed/discourse-icon/80/80";
+    if (avatarTemplate.startsWith('http')) return avatarTemplate;
+    return `/api${avatarTemplate.replace("{size}", "80")}`;
+  };
+
   useEffect(() => {
     const loadPostDetails = async () => {
       try {
         const postData = await discourseService.getPost(post.id)
-        // Find the like action in actions_summary
         const likeAction = postData.actions_summary?.find(action => action.id === 2)
         setLikeCount(likeAction?.count || 0)
         setIsLiked(likeAction?.acted || false)
@@ -53,69 +59,61 @@ export default function PostCard({ post, index, onReplyClick }) {
   }
 
   return (
-    <div className="bg-white p-4 rounded-lg border">
-      <div className="flex items-start gap-4">
+    <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+      {/* User info and avatar */}
+      <div className="flex items-center gap-3 mb-4">
         <img
-          src={post.avatar_template?.replace("{size}", "40") || 
-               `https://picsum.photos/seed/${post.id}-user/40/40`}
-          alt={post.username}
-          className="w-10 h-10 rounded-full"
+          src={getAvatarUrl(post.avatar_template)}
+          alt={`${post.username}'s avatar`}
+          className="w-10 h-10 rounded-full object-cover"
+          onError={(e) => {
+            e.target.onerror = null;
+            e.target.src = "https://picsum.photos/seed/discourse-icon/80/80";
+          }}
         />
-        <div className="flex-grow">
-          <div className="flex justify-between items-start mb-2">
-            <div>
-              <h3 className="font-semibold">{post.username}</h3>
-              <span className="text-sm text-gray-500">
-                {new Date(post.created_at).toLocaleDateString()}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">#{index + 1}</span>
-              <button className="text-gray-400 hover:text-gray-600">
-                <MoreHorizontal size={20} />
-              </button>
-            </div>
-          </div>
-          
-          <div 
-            className={`prose max-w-none ${!isExpanded && 'line-clamp-3'}`}
-            dangerouslySetInnerHTML={{ __html: post.cooked }}
-          />
-          
-          {!isExpanded && post.cooked.length > 200 && (
-            <button
-              onClick={() => setIsExpanded(true)}
-              className="text-blue-600 text-sm hover:underline mt-2"
-            >
-              Read more
-            </button>
-          )}
-
-          <div className="flex items-center gap-6 mt-4">
-            <button
-              onClick={handleLike}
-              className={`flex items-center gap-1 text-sm ${
-                isLiked ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <ThumbsUp size={18} />
-              <span>{likeCount}</span>
-            </button>
-            
-            <button
-              onClick={() => onReplyClick(post)}
-              className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
-            >
-              <MessageSquare size={18} />
-              <span>Reply</span>
-            </button>
-
-            <button className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
-              <Share2 size={18} />
-              <span>Share</span>
-            </button>
-          </div>
+        <div>
+          <h3 className="font-medium">{post.username}</h3>
+          <span className="text-sm text-gray-500">
+            {new Date(post.created_at).toLocaleDateString()}
+          </span>
         </div>
+      </div>
+
+      {/* Post content */}
+      <div 
+        className={`prose max-w-none ${!isExpanded ? 'line-clamp-3' : ''}`}
+        dangerouslySetInnerHTML={{ __html: post.cooked }}
+      />
+      
+      {/* Show more/less button */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="text-blue-500 text-sm mt-2"
+      >
+        {isExpanded ? 'Show less' : 'Show more'}
+      </button>
+
+      {/* Action buttons */}
+      <div className="flex items-center gap-4 mt-4 pt-4 border-t">
+        <button
+          onClick={handleLike}
+          disabled={isLoading}
+          className={`flex items-center gap-2 ${isLiked ? 'text-blue-500' : 'text-gray-500'}`}
+        >
+          <ThumbsUp size={18} />
+          <span>{likeCount}</span>
+        </button>
+        <button
+          onClick={() => onReplyClick(post)}
+          className="flex items-center gap-2 text-gray-500"
+        >
+          <MessageSquare size={18} />
+          <span>Reply</span>
+        </button>
+        <button className="flex items-center gap-2 text-gray-500">
+          <Share2 size={18} />
+          <span>Share</span>
+        </button>
       </div>
     </div>
   )
