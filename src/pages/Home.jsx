@@ -151,7 +151,7 @@ export default function Home({ onCommunitySelect }) {
         <div className="max-w-7xl mx-auto">
           {/* Hero Section */}
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold mb-2">Auto Movie Creator Community</h1>
+            <h1 className="text-4xl font-bold mb-2">Discover Communities</h1>
             <p className="text-gray-600">
               Join discussions and share your experience
             </p>

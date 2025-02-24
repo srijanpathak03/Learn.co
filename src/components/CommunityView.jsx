@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { discourseService } from '../services/discourseService'
 import PostCard from './PostCard'
+import PostModal from './PostModal'
 
 // Default image URL - you can replace this with your preferred default image
 const DEFAULT_IMAGE = 'https://placehold.co/600x400/25AAE2/FFFFFF?text=Community'
@@ -11,6 +12,8 @@ export default function CommunityView({ community, onBack }) {
   const [loadingTopic, setLoadingTopic] = useState(true)
   const [newPost, setNewPost] = useState("")
   const [replyingTo, setReplyingTo] = useState(null)
+  const [selectedPost, setSelectedPost] = useState(null)
+  const [isPostModalOpen, setIsPostModalOpen] = useState(false)
 
   useEffect(() => {
     loadTopicDetails()
@@ -185,14 +188,28 @@ export default function CommunityView({ community, onBack }) {
                       </div>
 
                       <div className="space-y-4">
-                        {posts.map((post, index) => (
-                          <PostCard
-                            key={post.id}
-                            post={post}
-                            index={index}
-                            onReplyClick={handleReplyClick}
-                          />
-                        ))}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {topicData?.post_stream?.posts?.map((post, index) => (
+                            <div
+                              key={post.id}
+                              onClick={() => {
+                                setSelectedPost({
+                                  ...post,
+                                  topic_id: topicData.id,
+                                  title: topicData.title
+                                })
+                                setIsPostModalOpen(true)
+                              }}
+                              className="bg-white rounded-lg overflow-hidden border hover:shadow-lg transition-shadow cursor-pointer"
+                            >
+                              <PostCard
+                                post={post}
+                                index={index}
+                                onReplyClick={handleReplyClick}
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </>
                   )}
@@ -217,6 +234,13 @@ export default function CommunityView({ community, onBack }) {
           </div>
         </div>
       </main>
+
+      {/* Add PostModal at the end of the component */}
+      <PostModal
+        post={selectedPost}
+        isOpen={isPostModalOpen}
+        onClose={() => setIsPostModalOpen(false)}
+      />
     </div>
   )
 } 

@@ -65,17 +65,23 @@ export const discourseService = {
   // Get a single topic with all posts
   getTopic: async (topicId) => {
     try {
-      const response = await fetch(`/api/t/${topicId}.json`, {
-        headers,
+      const response = await fetch(`/api/t/${topicId}/posts.json`, {
+        method: 'GET',
+        headers: {
+          ...headers,
+          'Api-Key': API_KEY,
+          'Api-Username': API_USERNAME,
+        },
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
       }
 
       return response.json();
     } catch (error) {
-      console.error('Error fetching topic:', error);
+      console.error('Error getting topic:', error);
       throw error;
     }
   },
@@ -83,19 +89,22 @@ export const discourseService = {
   // Create a reply to a topic
   createReply: async ({ topic_id, raw }) => {
     try {
-      const response = await fetch('/api/posts.json', {
+      const response = await fetch(`/api/posts`, {
         method: 'POST',
-        headers,
+        headers: {
+          ...headers,
+          'Api-Key': API_KEY,
+          'Api-Username': API_USERNAME,
+        },
         body: JSON.stringify({
           topic_id,
           raw,
-          archetype: 'regular',
-          nested_post: true
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
       }
 
       return response.json();
