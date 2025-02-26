@@ -1,9 +1,13 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 import CommunityAbout from '../pages/CommunityAbout';
 import CommunityFeed from '../pages/CommunityFeed';
 import PostDetail from '../pages/PostDetail';
 import CreateCommunity from '../pages/CreateCommunity';
 import Forum from "../pages/Forum";
+import Login from '../pages/Login';
+import Register from '../pages/Register';
+import { useContext } from 'react';
+import { AuthContext } from '../provider/AuthProvider';
 
 // Temporary mock user data to replace AuthContext
 const mockUser = {
@@ -12,26 +16,48 @@ const mockUser = {
   email: "test@example.com"
 };
 
+const ProtectedRoute = ({ children }) => {
+  const { user, loading } = useContext(AuthContext);
+  
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+  
+  if (!user) {
+    return <Navigate to="/login" />;
+  }
+  
+  return children;
+};
+
 const router = createBrowserRouter([
   {
+    path: "/login",
+    element: <Login />
+  },
+  {
+    path: "/register",
+    element: <Register />
+  },
+  {
     path: "/",
-    element: <Forum />
+    element: <ProtectedRoute><Forum /></ProtectedRoute>
   },
   {
     path: "/community/:id",
-    element: <CommunityAbout />
+    element: <ProtectedRoute><CommunityAbout /></ProtectedRoute>
   },
   {
     path: "/community/:id/feed",
-    element: <CommunityFeed />
+    element: <ProtectedRoute><CommunityFeed /></ProtectedRoute>
   },
   {
     path: "/community/:id/topic/:topicId",
-    element: <PostDetail />
+    element: <ProtectedRoute><PostDetail /></ProtectedRoute>
   },
   {
     path: "/create-community",
-    element: <CreateCommunity />
+    element: <ProtectedRoute><CreateCommunity /></ProtectedRoute>
   }
 ]);
 
