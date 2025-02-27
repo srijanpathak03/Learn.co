@@ -4,24 +4,14 @@ const mongoose = require('mongoose');
 const { getCollections } = require('../mongoConnection');
 const { ObjectId } = require('mongodb');
 const axios = require('axios');
+const crypto = require('crypto');
+const DiscourseUserMapping = require('../models/DiscourseUserMapping');
+const User = require('../models/User'); // Add this at the top with other imports
 
 // Add these constants at the top of your file
 const DISCOURSE_URL = process.env.DISCOURSE_URL;
 const DISCOURSE_API_KEY = process.env.DISCOURSE_API_KEY;
 const DISCOURSE_API_USERNAME = 'system';
-
-// User Schema
-const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  name: { type: String, required: true },
-  photoURL: String,
-  username: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now },
-  communities: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Community' }],
-  createdCommunities: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Community' }]
-});
-
-const User = mongoose.model('User', userSchema);
 
 // GET route to fetch all active communities
 router.get("/get-communities", async (req, res) => {
@@ -277,6 +267,339 @@ router.post('/user', async (req, res) => {
       success: false,
       message: 'Error creating user',
       error: error.message
+    });
+  }
+});
+
+// Register user on Discourse
+router.post('/discourse/register', async (req, res) => {
+  try {
+    const { communityId, user } = req.body;
+    const { communityCollection } = await getCollections();
+    
+    // Get community details to get Discourse URL
+    const community = await communityCollection.findOne({ 
+      _id: new ObjectId(communityId) 
+    });
+
+    if (!community) {
+      return res.status(404).json({ success: false, message: 'Community not found' });
+    }
+
+    // Create consistent username
+    const baseUsername = user.email.split('@')[0]
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/_+/g, '_');
+
+    const timestamp = Date.now().toString(36);
+    const username = `${baseUsername}_${timestamp}`.substring(0, 20);
+
+    const password = Array.from(crypto.randomBytes(16))
+      .map(byte => byte.toString(16).padStart(2, '0'))
+      .join('')
+      .substring(0, 20);
+
+    // Add logging for Discourse API request
+    console.log('Making Discourse API request:', {
+      url: `${community.discourse_url}/users.json`,
+      username,
+      email: user.email,
+      name: user.displayName || user.name
+    });
+
+    // Create the user
+    const createResponse = await axios.post(
+      `${community.discourse_url}/users.json`,
+      {
+        name: user.displayName || user.name,
+        email: user.email,
+        password: password,
+        username: username,
+        active: true,
+        approved: true
+      },
+      {
+        headers: {
+          'Api-Key': process.env.DISCOURSE_API_KEY,
+          'Api-Username': 'system',
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    console.log('Create user response:', createResponse.data);
+
+    if (!createResponse.data.success) {
+      throw new Error(createResponse.data.message || 'Failed to create Discourse user');
+    }
+
+    // Get user details using the username
+    console.log('Fetching user details for:', username);
+    const userResponse = await axios.get(
+      `${community.discourse_url}/users/${username}.json`,
+      {
+        headers: {
+          'Api-Key': process.env.DISCOURSE_API_KEY,
+          'Api-Username': 'system'
+        }
+      }
+    );
+
+    console.log('User details response:', userResponse.data);
+
+    if (!userResponse.data.user || !userResponse.data.user.id) {
+      throw new Error('Failed to fetch user details from Discourse');
+    }
+
+    const discourseUserId = userResponse.data.user.id;
+
+    // Create the mapping with required fields
+    const mappingData = {
+      userId: user.uid,
+      communityId: community._id,
+      discourseUserId: discourseUserId,
+      discourseUsername: username,
+      discoursePassword: password
+    };
+
+    console.log('Creating DiscourseUserMapping:', {
+      userId: mappingData.userId,
+      communityId: mappingData.communityId,
+      discourseUserId: mappingData.discourseUserId,
+      discourseUsername: mappingData.discourseUsername
+    });
+
+    const mapping = new DiscourseUserMapping(mappingData);
+    await mapping.save();
+
+    // Update user's communities array
+    await User.findOneAndUpdate(
+      { email: user.email },
+      { $addToSet: { communities: community._id } }
+    );
+
+    // Update community's member count
+    await communityCollection.updateOne(
+      { _id: community._id },
+      { $inc: { members_count: 1 } }
+    );
+
+    res.json({
+      success: true,
+      discourse_user_id: discourseUserId,
+      discourse_username: username,
+      mapping_id: mapping._id,
+      active: createResponse.data.active,
+      message: createResponse.data.message
+    });
+
+  } catch (error) {
+    console.error('Error in Discourse registration process:', {
+      error: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      statusText: error.response?.statusText
+    });
+
+    // If there's a validation error from Discourse
+    if (error.response?.data?.errors) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: error.response.data.errors
+      });
+    }
+
+    // For other errors
+    res.status(500).json({ 
+      success: false, 
+      message: error.message,
+      details: error.response?.data
+    });
+  }
+});
+
+// Update this route
+router.get('/discourse/user/:communityId', async (req, res) => {
+  try {
+    const { communityId } = req.params;
+    const userId = req.query.userId; // Get userId from query params instead of req.user
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+
+    // Find the mapping
+    const mapping = await DiscourseUserMapping.findOne({
+      userId,
+      communityId: new ObjectId(communityId)
+    });
+
+    if (!mapping) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not registered with this community'
+      });
+    }
+
+    // Get the community to get the Discourse URL
+    const { communityCollection } = await getCollections();
+    const community = await communityCollection.findOne({
+      _id: new ObjectId(communityId)
+    });
+
+    if (!community) {
+      return res.status(404).json({
+        success: false,
+        message: 'Community not found'
+      });
+    }
+
+    // Get fresh Discourse user details
+    const discourseResponse = await axios.get(
+      `${community.discourse_url}/users/${mapping.discourseUsername}.json`,
+      {
+        headers: {
+          'Api-Key': process.env.DISCOURSE_API_KEY,
+          'Api-Username': 'system'
+        }
+      }
+    );
+
+    res.json({
+      success: true,
+      discourseUser: {
+        id: mapping.discourseUserId,
+        username: mapping.discourseUsername,
+        ...discourseResponse.data.user
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching discourse user:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching discourse user'
+    });
+  }
+});
+
+// Add this new endpoint
+router.post('/community/join', async (req, res) => {
+  try {
+    const { communityId, userId, user } = req.body;
+    const { communityCollection } = await getCollections();
+
+    console.log('Join request received:', { communityId, userId, user });
+
+    // Check if community exists
+    const community = await communityCollection.findOne({ 
+      _id: new ObjectId(communityId) 
+    });
+
+    if (!community) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Community not found' 
+      });
+    }
+
+    // Get the discourse mapping
+    const mapping = await DiscourseUserMapping.findOne({
+      userId,
+      communityId: new ObjectId(communityId)
+    });
+
+    if (!mapping) {
+      console.log('No discourse mapping found');
+      return res.status(400).json({
+        success: false,
+        message: 'Discourse user mapping not found'
+      });
+    }
+
+    console.log('Found discourse mapping:', mapping);
+
+    // Try to find existing user by uid (not email)
+    let dbUser = await User.findOne({ uid: userId });
+
+    try {
+      if (dbUser) {
+        console.log('Updating existing user');
+        // Update existing user
+        dbUser = await User.findOneAndUpdate(
+          { uid: userId },
+          { 
+            $addToSet: { 
+              communities: new ObjectId(communityId),
+              discourseUsers: {
+                communityId: new ObjectId(communityId),
+                discourseUserId: mapping.discourseUserId,
+                discourseUsername: mapping.discourseUsername
+              }
+            }
+          },
+          { new: true }
+        );
+      } else {
+        console.log('Creating new user');
+        // Create new user
+        dbUser = new User({
+          uid: userId,
+          email: user.email,
+          name: user.displayName,
+          photoURL: user.photoURL,
+          communities: [new ObjectId(communityId)],
+          discourseUsers: [{
+            communityId: new ObjectId(communityId),
+            discourseUserId: mapping.discourseUserId,
+            discourseUsername: mapping.discourseUsername
+          }]
+        });
+        await dbUser.save();
+      }
+
+      // Update community's member count
+      await communityCollection.updateOne(
+        { _id: new ObjectId(communityId) },
+        { $inc: { members_count: 1 } }
+      );
+
+      // Get fresh Discourse user details
+      const discourseResponse = await axios.get(
+        `${community.discourse_url}/users/${mapping.discourseUsername}.json`,
+        {
+          headers: {
+            'Api-Key': process.env.DISCOURSE_API_KEY,
+            'Api-Username': 'system'
+          }
+        }
+      );
+
+      res.json({
+        success: true,
+        message: 'Successfully joined community',
+        discourseUser: discourseResponse.data.user,
+        mapping: {
+          discourseUserId: mapping.discourseUserId,
+          discourseUsername: mapping.discourseUsername
+        },
+        user: dbUser
+      });
+    } catch (dbError) {
+      console.error('Database operation error:', dbError);
+      throw dbError;
+    }
+
+  } catch (error) {
+    console.error('Error in join process:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to join community',
+      details: error.response?.data || error
     });
   }
 });
