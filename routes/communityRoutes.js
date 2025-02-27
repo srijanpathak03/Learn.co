@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const { getCollections } = require('../mongoConnection');
 const { ObjectId } = require('mongodb');
 const axios = require('axios');
@@ -8,6 +9,19 @@ const axios = require('axios');
 const DISCOURSE_URL = process.env.DISCOURSE_URL;
 const DISCOURSE_API_KEY = process.env.DISCOURSE_API_KEY;
 const DISCOURSE_API_USERNAME = 'system';
+
+// User Schema
+const userSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  photoURL: String,
+  username: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
+  communities: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Community' }],
+  createdCommunities: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Community' }]
+});
+
+const User = mongoose.model('User', userSchema);
 
 // GET route to fetch all active communities
 router.get("/get-communities", async (req, res) => {
@@ -215,6 +229,54 @@ router.get('/me', async (req, res) => {
     res.status(401).json({
       success: false,
       message: 'Invalid token'
+    });
+  }
+});
+
+router.post('/user', async (req, res) => {
+  try {
+    const { email, name, photoURL, username } = req.body;
+    
+    if (!email || !name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and name are required'
+      });
+    }
+
+    // Check if user already exists
+    let user = await User.findOne({ email });
+    
+    if (user) {
+      return res.json({ 
+        success: true, 
+        user 
+      });
+    }
+
+    // Create new user
+    user = new User({
+      email,
+      name,
+      photoURL,
+      username: username || email.split('@')[0],
+      communities: [],
+      createdCommunities: []
+    });
+
+    await user.save();
+    
+    res.json({
+      success: true,
+      user
+    });
+
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating user',
+      error: error.message
     });
   }
 });
