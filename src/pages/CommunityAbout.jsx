@@ -1,17 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Users, Calendar, Tag, Lock } from 'lucide-react';
 import axios from 'axios';
 import { serverbaseURL } from "../constant/index";
 import { motion } from 'framer-motion';
+import { AuthContext } from '../provider/AuthProvider';
 
 const defaultImage = 'https://developers.elementor.com/docs/assets/img/elementor-placeholder-image.png';
 
 const CommunityAbout = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
   const [community, setCommunity] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [joining, setJoining] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchCommunity = async () => {
@@ -27,6 +31,61 @@ const CommunityAbout = () => {
 
     fetchCommunity();
   }, [id]);
+
+  const handleJoin = async () => {
+    setJoining(true);
+    setError(null);
+    
+    try {
+      // Generate a secure random password
+      const password = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      
+      // First try to register user on Discourse
+      const discourseResponse = await axios.post(`${serverbaseURL}discourse/register`, {
+        communityId: id,
+        user: {
+          name: user.displayName,
+          email: user.email,
+          username: user.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '_'),
+          password,
+          uid: user.uid
+        }
+      });
+
+      console.log('Discourse registration response:', discourseResponse.data);
+
+      if (discourseResponse.data.success) {
+        // Then join the community with full user data
+        const joinResponse = await axios.post(`${serverbaseURL}community/join`, {
+          communityId: id,
+          userId: user.uid,
+          discourseUserId: discourseResponse.data.discourse_user_id,
+          user: {
+            displayName: user.displayName,
+            email: user.email,
+            photoURL: user.photoURL
+          }
+        });
+
+        console.log('Join community response:', joinResponse.data);
+
+        if (joinResponse.data.success) {
+          navigate(`/community/${id}/feed`);
+        } else {
+          throw new Error(joinResponse.data.message);
+        }
+      } else {
+        throw new Error(discourseResponse.data.message);
+      }
+    } catch (error) {
+      console.error('Error joining community:', error);
+      setError(error.response?.data?.message || 'Failed to join community');
+    } finally {
+      setJoining(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -162,10 +221,11 @@ const CommunityAbout = () => {
             {/* Join Button */}
             <div className="mt-8">
               <button
-                onClick={() => navigate(`/community/${id}/feed`)}
-                className="w-full bg-gradient-to-r from-purple-600 to-blue-500 text-white py-4 rounded-lg font-medium hover:shadow-lg transform hover:-translate-y-0.5 transition duration-200"
+                onClick={handleJoin}
+                disabled={joining}
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-500 text-white py-4 rounded-lg font-medium hover:shadow-lg transform hover:-translate-y-0.5 transition duration-200 disabled:opacity-50"
               >
-                Join Community
+                {joining ? 'Joining...' : 'Join Community'}
               </button>
             </div>
           </div>

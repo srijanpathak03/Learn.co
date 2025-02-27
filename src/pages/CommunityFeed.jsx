@@ -3,39 +3,60 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { serverbaseURL } from "../constant/index";
 import { MessageCircle, Users, Award, Settings, ThumbsUp } from 'lucide-react';
-// import { AuthContext } from '../provider/AuthProvider'; // Import your auth context
+import { AuthContext } from '../provider/AuthProvider';
 
 const CommunityFeed = () => {
   const { id } = useParams();
-  const user = { displayName: "Test User", photoURL: "https://ui-avatars.com/api/?name=Test+User&background=random" };
-
+  const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
+  
   const [topics, setTopics] = useState([]);
   const [filteredTopics, setFilteredTopics] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState('all');
   const [newPost, setNewPost] = useState('');
-  const navigate = useNavigate();
   const [communityData, setCommunityData] = useState(null);
+  const [discourseUser, setDiscourseUser] = useState(null);
+
+  useEffect(() => {
+    const fetchDiscourseUser = async () => {
+      try {
+        const response = await axios.get(`${serverbaseURL}discourse/user/${id}`, {
+          params: { userId: user.uid }
+        });
+
+        if (response.data.success) {
+          setDiscourseUser(response.data.discourseUser);
+        }
+      } catch (error) {
+        console.error('Error fetching discourse user:', error);
+        navigate(`/community/${id}`);
+      }
+    };
+
+    if (user?.uid && id) {
+      fetchDiscourseUser();
+    }
+  }, [user, id, navigate]);
 
   useEffect(() => {
     const fetchDiscourseData = async () => {
+      if (!discourseUser) return;
+
       try {
-        // Fetch community details to get Discourse URL
         const communityResponse = await axios.get(`${serverbaseURL}community/${id}`);
         const discourseUrl = communityResponse.data.discourse_url;
         setCommunityData(communityResponse.data);
 
-        // Fetch topics with details and categories from Discourse
         const [topicsResponse, categoriesResponse] = await Promise.all([
-          axios.get(`${discourseUrl}/latest.json?include_user_details=true`), // Added user details parameter
+          axios.get(`${discourseUrl}/latest.json?include_user_details=true`),
           axios.get(`${discourseUrl}/categories.json`)
         ]);
 
         const fetchedTopics = topicsResponse.data.topic_list.topics;
-        const users = topicsResponse.data.users || []; // Get users array from response
+        const users = topicsResponse.data.users || [];
 
-        // Enhance topics with user details
         const enhancedTopics = fetchedTopics.map(topic => {
           const posterDetails = users.find(u => u.id === topic.posters?.[0]?.user_id);
           return {
@@ -55,7 +76,7 @@ const CommunityFeed = () => {
     };
 
     fetchDiscourseData();
-  }, [id]);
+  }, [id, discourseUser]);
 
   const getAvatarUrl = (avatarTemplate) => {
     if (!avatarTemplate) return `https://ui-avatars.com/api/?name=User&background=random`;
@@ -67,7 +88,6 @@ const CommunityFeed = () => {
     }
   };
 
-  // Filter topics when category changes
   useEffect(() => {
     if (activeCategory === 'all') {
       setFilteredTopics(topics);
@@ -93,7 +113,6 @@ const CommunityFeed = () => {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex gap-8">
-          {/* Left Sidebar */}
           <div className="w-64 flex-shrink-0">
             <div className="bg-white rounded-lg shadow-sm p-4 sticky top-20">
               <div className="space-y-2">
@@ -133,9 +152,7 @@ const CommunityFeed = () => {
             </div>
           </div>
 
-          {/* Main Content */}
           <div className="flex-1">
-            {/* Create Post */}
             <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
               <div className="flex items-center space-x-3 mb-4">
                 <img
@@ -153,7 +170,6 @@ const CommunityFeed = () => {
               </div>
               <div className="flex justify-between items-center">
                 <div className="flex space-x-2">
-                  {/* Add post type buttons here */}
                 </div>
                 <button className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700">
                   Post
@@ -161,11 +177,10 @@ const CommunityFeed = () => {
               </div>
             </div>
 
-            {/* Topics List */}
             <div className="space-y-4">
               {filteredTopics.map(topic => {
                 const category = categories.find(c => c.id === topic.category_id);
-                const replyCount = (topic.posts_count || 1) - 1; // Subtract 1 to exclude the original post
+                const replyCount = (topic.posts_count || 1) - 1;
 
                 return (
                   <div 
@@ -186,7 +201,6 @@ const CommunityFeed = () => {
                             <span className="text-gray-500 text-sm">
                               {new Date(topic.created_at).toLocaleDateString()}
                             </span>
-                            {/* Category Tag with proper color */}
                             {category && (
                               <span 
                                 className="text-xs px-2 py-1 rounded-full"
@@ -203,22 +217,18 @@ const CommunityFeed = () => {
                         </div>
                         <h3 className="font-medium mt-2">{topic.title}</h3>
                         <div className="flex items-center space-x-4 mt-3">
-                          {/* Likes */}
                           <div className="flex items-center space-x-1 text-gray-500">
                             <ThumbsUp className="w-4 h-4" />
                             <span>{topic.like_count || 0} likes</span>
                           </div>
-                          {/* Replies */}
                           <div className="flex items-center space-x-1 text-gray-500">
                             <MessageCircle className="w-4 h-4" />
                             <span>{replyCount} replies</span>
                           </div>
-                          {/* Participants */}
                           <div className="flex items-center space-x-1 text-gray-500">
                             <Users className="w-4 h-4" />
                             <span>{topic.participant_count} participants</span>
                           </div>
-                          {/* Views */}
                           <div className="flex items-center space-x-1 text-gray-500">
                             <svg 
                               className="w-4 h-4" 
@@ -241,7 +251,6 @@ const CommunityFeed = () => {
                             </svg>
                             <span>{topic.views} views</span>
                           </div>
-                          {/* Last Activity */}
                           <div className="flex items-center space-x-1 text-gray-500">
                             <svg 
                               className="w-4 h-4" 
@@ -269,11 +278,9 @@ const CommunityFeed = () => {
             </div>
           </div>
 
-          {/* Right Sidebar */}
           <div className="w-64 flex-shrink-0">
             <div className="bg-white rounded-lg shadow-sm p-4 sticky top-20">
               <h3 className="font-medium mb-4">Leaderboard</h3>
-              {/* Add leaderboard content */}
             </div>
           </div>
         </div>
