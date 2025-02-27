@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { Search, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { serverbaseURL } from "../constant/index";
+import { AuthContext } from "../provider/AuthProvider";
 
 const defaultImage = 'https://developers.elementor.com/docs/assets/img/elementor-placeholder-image.png'; // Add a default image path
 
@@ -12,6 +13,7 @@ const Forum = () => {
   const [communities, setCommunities] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
   
   useEffect(() => {
     const fetchCommunities = async () => {
@@ -34,6 +36,13 @@ const Forum = () => {
   );
 
   const handleCommunityClick = (communityId) => {
+    if (!user) {
+      // Store the intended destination
+      localStorage.setItem('redirectAfterLogin', `/community/${communityId}`);
+      navigate('/login');
+      return;
+    }
+    
     navigate(`/community/${communityId}`);
   };
 
@@ -96,7 +105,7 @@ const Forum = () => {
                   #{index + 1}
                 </span>
                 <img
-                  src={community.image_url || defaultImage}
+                  src={community.image || defaultImage}
                   alt={community.name}
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -109,7 +118,7 @@ const Forum = () => {
               <div className="p-4">
                 <div className="flex items-center gap-3 mb-2">
                   <img
-                    src={community.image_url || defaultImage}
+                    src={community.image || defaultImage}
                     alt=""
                     className="w-10 h-10 rounded-full"
                     onError={(e) => {

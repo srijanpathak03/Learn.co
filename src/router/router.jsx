@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import CommunityAbout from '../pages/CommunityAbout';
 import CommunityFeed from '../pages/CommunityFeed';
 import PostDetail from '../pages/PostDetail';
@@ -30,35 +30,35 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-const router = createBrowserRouter([
+const routes = [
   {
-    path: "/login",
+    path: "login",
     element: <Login />
   },
   {
-    path: "/register",
+    path: "register",
     element: <Register />
   },
   {
-    path: "/",
-    element: <ProtectedRoute><Forum /></ProtectedRoute>
+    path: "",
+    element: <Forum />
   },
   {
-    path: "/community/:id",
+    path: "community/:id",
     element: <ProtectedRoute><CommunityAbout /></ProtectedRoute>
   },
   {
-    path: "/community/:id/feed",
+    path: "community/:id/feed",
     element: <ProtectedRoute><CommunityFeed /></ProtectedRoute>
   },
   {
-    path: "/community/:id/topic/:topicId",
+    path: "community/:id/topic/:topicId",
     element: <ProtectedRoute><PostDetail /></ProtectedRoute>
   },
   {
-    path: "/create-community",
+    path: "create-community",
     element: <ProtectedRoute><CreateCommunity /></ProtectedRoute>
   }
-]);
+];
 
-export default router;
+export default routes;

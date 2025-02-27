@@ -1,97 +1,85 @@
-import React, { createContext, useState, useEffect } from 'react';
-import axios from 'axios';
-import { serverbaseURL } from '../constant';
+import { createContext, useEffect, useState } from "react";
+import { GoogleAuthProvider, getAuth, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import app from "../firebase/firebase.config";
+import axios from "axios";
+import { serverbaseURL } from '../constant/index';
 
 export const AuthContext = createContext(null);
+const auth = getAuth(app);
+const googleProvider = new GoogleAuthProvider();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
   const [loading, setLoading] = useState(true);
 
-  const login = async (username, password) => {
+  const googleSignIn = async () => {
     try {
-      const response = await axios.post(`${serverbaseURL}login`, {
-        login: username,
-        password: password
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Api-Key': process.env.DISCOURSE_API_KEY,
-          'Api-Username': 'system'
-        }
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      
+      // Create or update user in your backend
+      await axios.post(`${serverbaseURL}user`, {
+        email: user.email,
+        name: user.displayName,
+        photoURL: user.photoURL,
+        username: user.email.split('@')[0],
+        createdAt: new Date(),
+        communities: [],
+        createdCommunities: []
       });
-      
-      if (response.data.user) {
-        setUser(response.data.user);
-        localStorage.setItem('discourse_token', response.data.token);
-        return { success: true };
-      }
+
+      return { success: true, user };
     } catch (error) {
+      console.error('Google Sign In Error:', error);
       return { 
         success: false, 
-        error: error.response?.data?.message || 'Invalid username or password' 
+        error: error.message 
       };
     }
   };
 
-  const register = async (userData) => {
+  const logOut = async (navigate) => {
     try {
-      const response = await axios.post(`${serverbaseURL}register`, userData);
-      
-      if (response.data.success && response.data.user && !response.data.user.errors) {
-        setUser(response.data.user);
-        localStorage.setItem('discourse_token', response.data.token);
-        return { success: true };
-      } else {
-        // Handle validation errors from Discourse
-        const errors = response.data.user.errors || {};
-        const errorMessages = Object.entries(errors)
-          .map(([key, value]) => `${key}: ${value.join(', ')}`)
-          .join('\n');
-        
-        return { 
-          success: false, 
-          error: errorMessages || response.data.user.message || 'Registration failed'
-        };
-      }
+      await signOut(auth);
+      localStorage.removeItem('user');
+      setUser(null);
+      navigate('/login');
     } catch (error) {
-      return { 
-        success: false, 
-        error: error.response?.data?.message || 'Registration failed' 
-      };
+      console.error('Logout Error:', error);
     }
-  };
-
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('discourse_token');
   };
 
   useEffect(() => {
-    const token = localStorage.getItem('discourse_token');
-    if (token) {
-      axios.get(`${serverbaseURL}auth/me`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      .then(response => {
-        if (response.data.user) {
-          setUser(response.data.user);
-        }
-      })
-      .catch(() => {
-        localStorage.removeItem('discourse_token');
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-    } else {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        localStorage.setItem('user', JSON.stringify(currentUser));
+        setUser(currentUser);
+      } else {
+        localStorage.removeItem('user');
+        setUser(null);
+      }
       setLoading(false);
-    }
+    });
+
+    return () => unsubscribe();
   }, []);
 
+  const value = {
+    user,
+    loading,
+    googleSignIn,
+    logOut,
+    setLoading
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
-}; 
+};
+
+export default AuthProvider; 
