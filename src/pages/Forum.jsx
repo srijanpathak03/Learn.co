@@ -105,7 +105,7 @@ const Forum = () => {
                   #{index + 1}
                 </span>
                 <img
-                  src={community.image || defaultImage}
+                  src={community.image_url || defaultImage}
                   alt={community.name}
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -118,7 +118,7 @@ const Forum = () => {
               <div className="p-4">
                 <div className="flex items-center gap-3 mb-2">
                   <img
-                    src={community.image || defaultImage}
+                    src={community.image_url || defaultImage}
                     alt=""
                     className="w-10 h-10 rounded-full"
                     onError={(e) => {
