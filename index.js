@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const app = express();
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
@@ -16,9 +17,15 @@ mongoose.connect(process.env.MONGODB_URI)
 // Make db connection available to routes
 app.locals.db = mongoose.connection;
 
-// Routes
+// Import routes
 const communityRoutes = require('./routes/communityRoutes');
+const authRoutes = require('./routes/authRoutes');
+const discourseRoutes = require('./routes/discourseRoutes');
+
+// Use routes
 app.use('/', communityRoutes);
+app.use('/', authRoutes);
+app.use('/discourse', discourseRoutes); // All discourse routes will be prefixed with /discourse
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
