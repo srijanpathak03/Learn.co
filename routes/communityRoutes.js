@@ -298,3 +298,58 @@ router.get('/discourse/user/:communityId', async (req, res) => {
 });
 
 module.exports = router;
+
+// Check if user is a member of a community
+router.get('/community/:id/check-membership', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+
+    // Check if user exists
+    const user = await User.findOne({ uid: userId });
+    
+    if (!user) {
+      return res.json({
+        success: true,
+        isMember: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if user is a member of this community
+    const isMember = user.communities.some(communityId => 
+      communityId.toString() === id || communityId.equals(new ObjectId(id))
+    );
+
+    // Also check if there's a discourse mapping
+    const mapping = await DiscourseUserMapping.findOne({
+      userId,
+      communityId: new ObjectId(id)
+    });
+
+    // User is considered a member if they have the community in their communities array
+    // AND they have a discourse mapping
+    const isFullMember = isMember && mapping;
+
+    res.json({
+      success: true,
+      isMember: isFullMember,
+      hasCommunity: isMember,
+      hasMapping: !!mapping
+    });
+  } catch (error) {
+    console.error('Error checking membership:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error checking membership',
+      error: error.message
+    });
+  }
+});

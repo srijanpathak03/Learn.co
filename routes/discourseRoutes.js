@@ -382,8 +382,36 @@ router.get('/initiate-sso/:communityId', async (req, res) => {
       });
     }
 
-    // Generate the redirect URL to Discourse
-    const redirectUrl = `${community.discourse_url}/session/sso_login`;
+    // Get user details
+    const user = await User.findOne({ uid: userId });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Create a nonce (random value)
+    const nonce = crypto.randomBytes(16).toString('hex');
+    
+    // Create the return URL (your server endpoint that will handle the SSO callback)
+    const returnUrl = `${req.protocol}://${req.get('host')}/discourse/sso/${communityId}`;
+    
+    // Create the payload
+    const payload = {
+      nonce: nonce,
+      return_sso_url: returnUrl,
+      external_id: userId
+    };
+    
+    // Base64 encode and URL encode the payload
+    const base64Payload = Buffer.from(querystring.stringify(payload)).toString('base64');
+    
+    // Get the SSO secret from environment variables
+    const discourseSecret = process.env.DISCOURSE_SSO_SECRET || 'thisisassosecretforautomiviecreator';
+    
+    // Create the signature
+    const sig = crypto.createHmac('sha256', discourseSecret).update(base64Payload).digest('hex');
+    
+    // Generate the redirect URL to Discourse with SSO parameters
+    const redirectUrl = `${community.discourse_url}/session/sso_login?sso=${encodeURIComponent(base64Payload)}&sig=${sig}`;
     
     // Return the redirect URL to the client
     res.json({ 
