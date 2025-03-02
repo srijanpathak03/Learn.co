@@ -22,6 +22,7 @@ export const AuthProvider = ({ children }) => {
       
       // Create or update user in your backend
       await axios.post(`${serverbaseURL}user`, {
+        uid: user.uid,
         email: user.email,
         name: user.displayName,
         photoURL: user.photoURL,
