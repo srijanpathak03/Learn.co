@@ -353,3 +353,58 @@ router.get('/community/:id/check-membership', async (req, res) => {
     });
   }
 });
+
+// Search communities
+router.get("/search-communities", async (req, res) => {
+  try {
+    const { query } = req.query;
+    const { communityCollection } = await getCollections();
+    
+    if (!query || query.trim() === '') {
+      // If no query is provided, return all active communities
+      const allCommunities = await communityCollection
+        .find({ status: 'active' })
+        .sort({ members_count: -1 })
+        .limit(20)
+        .toArray();
+      
+      return res.json(allCommunities);
+    }
+    
+    // Create a text index on relevant fields if it doesn't exist
+    const indexExists = await communityCollection.indexExists('search_text_index');
+    if (!indexExists) {
+      await communityCollection.createIndex(
+        { name: "text", description: "text", category: "text" },
+        { name: "search_text_index", weights: { name: 10, category: 5, description: 1 } }
+      );
+    }
+    
+    // Perform text search
+    const searchResults = await communityCollection
+      .find({
+        $and: [
+          { status: 'active' },
+          {
+            $or: [
+              { $text: { $search: query } },
+              { name: { $regex: query, $options: 'i' } },
+              { description: { $regex: query, $options: 'i' } },
+              { category: { $regex: query, $options: 'i' } }
+            ]
+          }
+        ]
+      })
+      .sort({ score: { $meta: "textScore" }, members_count: -1 })
+      .limit(20)
+      .toArray();
+    
+    res.json(searchResults);
+  } catch (error) {
+    console.error('Error searching communities:', error);
+    res.status(500).json({
+      message: "Error searching communities",
+      status: "error",
+    });
+  }
+});
