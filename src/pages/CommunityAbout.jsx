@@ -16,32 +16,104 @@ const CommunityAbout = () => {
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(null);
+  const [checkingMembership, setCheckingMembership] = useState(true);
+  const [authenticatingWithDiscourse, setAuthenticatingWithDiscourse] = useState(false);
 
   useEffect(() => {
-    const fetchCommunity = async () => {
+    const checkMembershipAndFetchCommunity = async () => {
       try {
-        const response = await axios.get(`${serverbaseURL}community/${id}`);
-        setCommunity(response.data);
+        setLoading(true);
+        setCheckingMembership(true);
+        
+        // First fetch the community data
+        const communityResponse = await axios.get(`${serverbaseURL}community/${id}`);
+        setCommunity(communityResponse.data);
+        
+        // If user is logged in, check if they're already a member
+        if (user && user.uid) {
+          try {
+            const membershipResponse = await axios.get(
+              `${serverbaseURL}community/${id}/check-membership`, 
+              { params: { userId: user.uid } }
+            );
+            
+            // If user is already a member, redirect to the feed page
+            if (membershipResponse.data.isMember) {
+              navigate(`/community/${id}/feed`);
+              return; // Exit early since we're redirecting
+            }
+          } catch (membershipError) {
+            console.error('Error checking membership:', membershipError);
+            // Continue to show the about page even if membership check fails
+          }
+        }
       } catch (error) {
         console.error('Error fetching community:', error);
+        setError('Failed to load community information');
       } finally {
         setLoading(false);
+        setCheckingMembership(false);
       }
     };
 
-    fetchCommunity();
-  }, [id]);
+    checkMembershipAndFetchCommunity();
+  }, [id, user, navigate]);
+
+  // Function to initiate Discourse SSO login
+  const initiateDiscourseLogin = async (discourseUser) => {
+    try {
+      setAuthenticatingWithDiscourse(true);
+      
+      // Get community data to get Discourse URL
+      const communityResponse = await axios.get(`${serverbaseURL}community/${id}`);
+      setCommunity(communityResponse.data);
+      
+      // Initiate SSO login
+      const ssoResponse = await axios.get(`${serverbaseURL}discourse/initiate-sso/${id}`, {
+        params: { userId: user.uid }
+      });
+      
+      if (ssoResponse.data.success && ssoResponse.data.redirect_url) {
+        // Open Discourse SSO in a new window
+        const ssoWindow = window.open(ssoResponse.data.redirect_url, 'discourse_sso', 'width=600,height=700');
+        
+        // Check if window was blocked by popup blocker
+        if (!ssoWindow || ssoWindow.closed || typeof ssoWindow.closed === 'undefined') {
+          throw new Error('Please allow popups for this site to login to the community');
+        }
+        
+        // Poll to check if the SSO window is closed
+        const checkWindowClosed = setInterval(() => {
+          if (ssoWindow.closed) {
+            clearInterval(checkWindowClosed);
+            setAuthenticatingWithDiscourse(false);
+            
+            // Now redirect to feed page after successful authentication
+            navigate(`/community/${id}/feed`);
+          }
+        }, 500);
+      } else {
+        throw new Error('Failed to initiate SSO login');
+      }
+    } catch (error) {
+      console.error('Error authenticating with Discourse:', error);
+      setAuthenticatingWithDiscourse(false);
+      setError(error.message || 'Authentication failed');
+    }
+  };
 
   const handleJoin = async () => {
+    if (!user) {
+      // Store the intended destination
+      localStorage.setItem('redirectAfterLogin', `/community/${id}`);
+      navigate('/login');
+      return;
+    }
+    
     setJoining(true);
     setError(null);
     
     try {
-      // Generate a secure random password
-      const password = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-      
       // First try to register user on Discourse
       const discourseResponse = await axios.post(`${serverbaseURL}discourse/register`, {
         communityId: id,
@@ -49,7 +121,6 @@ const CommunityAbout = () => {
           name: user.displayName,
           email: user.email,
           username: user.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '_'),
-          password,
           uid: user.uid
         }
       });
@@ -61,7 +132,6 @@ const CommunityAbout = () => {
         const joinResponse = await axios.post(`${serverbaseURL}community/join`, {
           communityId: id,
           userId: user.uid,
-          discourseUserId: discourseResponse.data.discourse_user_id,
           user: {
             displayName: user.displayName,
             email: user.email,
@@ -72,25 +142,33 @@ const CommunityAbout = () => {
         console.log('Join community response:', joinResponse.data);
 
         if (joinResponse.data.success) {
+          // After successfully joining, redirect to the feed page
           navigate(`/community/${id}/feed`);
         } else {
-          throw new Error(joinResponse.data.message);
+          throw new Error(joinResponse.data.message || 'Failed to join community');
         }
       } else {
-        throw new Error(discourseResponse.data.message);
+        throw new Error(discourseResponse.data.message || 'Failed to register with Discourse');
       }
     } catch (error) {
       console.error('Error joining community:', error);
-      setError(error.response?.data?.message || 'Failed to join community');
+      setError(error.message || 'Failed to join community');
     } finally {
       setJoining(false);
     }
   };
 
-  if (loading) {
+  if (loading || checkingMembership || authenticatingWithDiscourse) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">
+            {authenticatingWithDiscourse 
+              ? 'Authenticating with community...' 
+              : 'Loading community...'}
+          </p>
+        </div>
       </div>
     );
   }
@@ -123,7 +201,7 @@ const CommunityAbout = () => {
         {/* Back Button */}
         <div className="absolute top-6 left-6">
           <button
-            onClick={() => navigate('/forum')}
+            onClick={() => navigate('/')}
             className="flex items-center space-x-2 text-white bg-black/30 px-4 py-2 rounded-lg hover:bg-black/40 transition duration-200"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -227,6 +305,7 @@ const CommunityAbout = () => {
               >
                 {joining ? 'Joining...' : 'Join Community'}
               </button>
+              {error && <p className="text-red-500 mt-2 text-center">{error}</p>}
             </div>
           </div>
         </motion.div>

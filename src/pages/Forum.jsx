@@ -67,13 +67,13 @@ const Forum = () => {
               or <a href="/create-community" className="text-blue-500">create your own</a>
             </span>
           </div>
-          <button 
+          {/* <button 
             onClick={() => navigate('/create-community')} 
             className="flex items-center gap-2 bg-gradient-to-r from-[#805af5] to-[#cd99ff] text-white px-4 py-2 rounded-lg hover:shadow-lg transition duration-200 absolute right-4"
           >
             <Plus className="w-5 h-5" />
             <span>Host Community</span>
-          </button>
+          </button> */}
         </div>
 
         {/* Search Bar */}

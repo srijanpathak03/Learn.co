@@ -18,65 +18,130 @@ const CommunityFeed = () => {
   const [newPost, setNewPost] = useState('');
   const [communityData, setCommunityData] = useState(null);
   const [discourseUser, setDiscourseUser] = useState(null);
+  const [authenticatingWithDiscourse, setAuthenticatingWithDiscourse] = useState(false);
+  const [discourseAuthError, setDiscourseAuthError] = useState(null);
 
   useEffect(() => {
-    const fetchDiscourseUser = async () => {
-      try {
-        const response = await axios.get(`${serverbaseURL}discourse/user/${id}`, {
-          params: { userId: user.uid }
-        });
-
-        if (response.data.success) {
-          setDiscourseUser(response.data.discourseUser);
-        }
-      } catch (error) {
-        console.error('Error fetching discourse user:', error);
-        navigate(`/community/${id}`);
-      }
-    };
-
-    if (user?.uid && id) {
-      fetchDiscourseUser();
+    // Redirect to login if not authenticated
+    if (!user) {
+      localStorage.setItem('redirectAfterLogin', `/community/${id}/feed`);
+      navigate('/login');
+      return;
     }
-  }, [user, id, navigate]);
 
-  useEffect(() => {
-    const fetchDiscourseData = async () => {
-      if (!discourseUser) return;
-
+    const checkMembershipAndLoadFeed = async () => {
       try {
+        setLoading(true);
+        
+        // Check if user is a member of this community
+        const membershipResponse = await axios.get(
+          `${serverbaseURL}community/${id}/check-membership`, 
+          { params: { userId: user.uid } }
+        );
+        
+        // If user is not a member, redirect to the about page
+        if (!membershipResponse.data.isMember) {
+          navigate(`/community/${id}`);
+          return;
+        }
+        
+        // Fetch community data
         const communityResponse = await axios.get(`${serverbaseURL}community/${id}`);
-        const discourseUrl = communityResponse.data.discourse_url;
         setCommunityData(communityResponse.data);
-
-        const [topicsResponse, categoriesResponse] = await Promise.all([
-          axios.get(`${discourseUrl}/latest.json?include_user_details=true`),
-          axios.get(`${discourseUrl}/categories.json`)
-        ]);
-
-        const fetchedTopics = topicsResponse.data.topic_list.topics;
-        const users = topicsResponse.data.users || [];
-
-        const enhancedTopics = fetchedTopics.map(topic => {
-          const posterDetails = users.find(u => u.id === topic.posters?.[0]?.user_id);
-          return {
-            ...topic,
-            poster: posterDetails || null
-          };
-        });
-
-        setTopics(enhancedTopics);
-        setFilteredTopics(enhancedTopics);
-        setCategories(categoriesResponse.data.category_list.categories);
+        
+        // Authenticate with Discourse
+        await authenticateWithDiscourse();
+        
       } catch (error) {
-        console.error('Error fetching Discourse data:', error);
+        console.error('Error loading community feed:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDiscourseData();
-  }, [id, discourseUser]);
+    checkMembershipAndLoadFeed();
+  }, [id, user, navigate]);
+
+  const authenticateWithDiscourse = async () => {
+    if (!user?.uid) return;
+    
+    try {
+      setAuthenticatingWithDiscourse(true);
+      setDiscourseAuthError(null);
+      
+      const mappingResponse = await axios.get(`${serverbaseURL}discourse/user/${id}`, {
+        params: { userId: user.uid }
+      });
+      
+      if (!mappingResponse.data.success) {
+        navigate(`/community/${id}`);
+        return;
+      }
+      
+      setDiscourseUser(mappingResponse.data.discourseUser);
+      
+      const ssoResponse = await axios.get(`${serverbaseURL}discourse/initiate-sso/${id}`, {
+        params: { userId: user.uid }
+      });
+      
+      if (ssoResponse.data.success && ssoResponse.data.redirect_url) {
+        const ssoWindow = window.open(ssoResponse.data.redirect_url, 'discourse_sso', 'width=600,height=700');
+        
+        if (!ssoWindow || ssoWindow.closed || typeof ssoWindow.closed === 'undefined') {
+          throw new Error('Please allow popups for this site to login to the community');
+        }
+        
+        const checkWindowClosed = setInterval(() => {
+          if (ssoWindow.closed) {
+            clearInterval(checkWindowClosed);
+            setAuthenticatingWithDiscourse(false);
+            
+            fetchDiscourseData(communityData.discourse_url);
+          }
+        }, 500);
+      } else {
+        throw new Error('Failed to initiate SSO login');
+      }
+    } catch (error) {
+      console.error('Error authenticating with Discourse:', error);
+      setDiscourseAuthError(error.message || 'Authentication failed');
+      setAuthenticatingWithDiscourse(false);
+    }
+  };
+
+  const fetchDiscourseData = async (discourseUrl) => {
+    if (!discourseUrl) return;
+    
+    try {
+      const [topicsResponse, categoriesResponse] = await Promise.all([
+        axios.get(`${discourseUrl}/latest.json?include_user_details=true`, {
+          withCredentials: true
+        }),
+        axios.get(`${discourseUrl}/categories.json`, {
+          withCredentials: true
+        })
+      ]);
+
+      const fetchedTopics = topicsResponse.data.topic_list.topics;
+      const users = topicsResponse.data.users || [];
+
+      const enhancedTopics = fetchedTopics.map(topic => {
+        const posterDetails = users.find(u => u.id === topic.posters?.[0]?.user_id);
+        return {
+          ...topic,
+          poster: posterDetails || null
+        };
+      });
+
+      setTopics(enhancedTopics);
+      setFilteredTopics(enhancedTopics);
+      setCategories(categoriesResponse.data.category_list.categories);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching Discourse data:', error);
+      setLoading(false);
+    }
+  };
 
   const getAvatarUrl = (avatarTemplate) => {
     if (!avatarTemplate) return `https://ui-avatars.com/api/?name=User&background=random`;
@@ -105,8 +170,35 @@ const CommunityFeed = () => {
     navigate(`/community/${id}/topic/${topicId}`);
   };
 
-  if (loading) {
-    return <div>Loading...</div>;
+  if (loading || authenticatingWithDiscourse) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">
+            {authenticatingWithDiscourse ? 'Authenticating with community...' : 'Loading community feed...'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (discourseAuthError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center max-w-md p-6 bg-white rounded-lg shadow-md">
+          <div className="text-red-500 text-5xl mb-4">⚠️</div>
+          <h2 className="text-xl font-semibold mb-2">Authentication Error</h2>
+          <p className="text-gray-600 mb-4">{discourseAuthError}</p>
+          <button 
+            onClick={() => navigate(`/community/${id}`)}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Back to Community
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

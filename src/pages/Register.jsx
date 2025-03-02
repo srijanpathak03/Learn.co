@@ -19,13 +19,14 @@ const Register = () => {
       if (result.success) {
         // Save user info to community database
         await axios.post(`${serverbaseURL}user`, {
+          uid: result.user.uid,
           email: result.user.email,
           name: result.user.displayName,
           photoURL: result.user.photoURL,
-          username: result.user.email.split('@')[0], // Create username from email
+          username: result.user.email.split('@')[0],
           createdAt: new Date(),
-          communities: [], // Array to store joined communities
-          createdCommunities: [], // Array to store created communities
+          communities: [],
+          createdCommunities: []
         });
         
         navigate('/');
