@@ -4,6 +4,7 @@ import axios from 'axios';
 import { serverbaseURL } from "../constant/index";
 import { MessageCircle, Users, Award, Settings, ThumbsUp } from 'lucide-react';
 import { AuthContext } from '../provider/AuthProvider';
+import { discourseService } from '../services/discourseService';
 
 const CommunityFeed = () => {
   const { id } = useParams();
@@ -22,14 +23,13 @@ const CommunityFeed = () => {
   const [discourseAuthError, setDiscourseAuthError] = useState(null);
 
   useEffect(() => {
-    // Redirect to login if not authenticated
     if (!user) {
       localStorage.setItem('redirectAfterLogin', `/community/${id}/feed`);
       navigate('/login');
       return;
     }
 
-    const checkMembershipAndLoadFeed = async () => {
+    const loadFeed = async () => {
       try {
         setLoading(true);
         
@@ -38,8 +38,8 @@ const CommunityFeed = () => {
           `${serverbaseURL}community/${id}/check-membership`, 
           { params: { userId: user.uid } }
         );
+        console.log('Membership Response:', membershipResponse.data);
         
-        // If user is not a member, redirect to the about page
         if (!membershipResponse.data.isMember) {
           navigate(`/community/${id}`);
           return;
@@ -47,98 +47,103 @@ const CommunityFeed = () => {
         
         // Fetch community data
         const communityResponse = await axios.get(`${serverbaseURL}community/${id}`);
+        console.log('Community Response:', communityResponse.data);
         setCommunityData(communityResponse.data);
         
-        // Authenticate with Discourse
-        await authenticateWithDiscourse();
+        // Get user's Discourse mapping
+        const mappingResponse = await axios.get(`${serverbaseURL}discourse/user/${id}`, {
+          params: { userId: user.uid }
+        });
+        console.log('Mapping Response:', mappingResponse.data);
+
+        if (mappingResponse.data.success) {
+          setDiscourseUser(mappingResponse.data.discourseUser);
+          await fetchDiscourseData(
+            communityResponse.data.discourse_url, 
+            mappingResponse.data.discourseUser.username
+          );
+        }
         
       } catch (error) {
-        console.error('Error loading community feed:', error);
+        console.error('Error loading community feed:', error.response?.data || error);
       } finally {
         setLoading(false);
       }
     };
 
-    checkMembershipAndLoadFeed();
+    loadFeed();
   }, [id, user, navigate]);
 
-  const authenticateWithDiscourse = async () => {
-    if (!user?.uid) return;
-    
-    try {
-      setAuthenticatingWithDiscourse(true);
-      setDiscourseAuthError(null);
-      
-      const mappingResponse = await axios.get(`${serverbaseURL}discourse/user/${id}`, {
-        params: { userId: user.uid }
-      });
-      
-      if (!mappingResponse.data.success) {
-        navigate(`/community/${id}`);
-        return;
-      }
-      
-      setDiscourseUser(mappingResponse.data.discourseUser);
-      
-      const ssoResponse = await axios.get(`${serverbaseURL}discourse/initiate-sso/${id}`, {
-        params: { userId: user.uid }
-      });
-      
-      if (ssoResponse.data.success && ssoResponse.data.redirect_url) {
-        const ssoWindow = window.open(ssoResponse.data.redirect_url, 'discourse_sso', 'width=600,height=700');
-        
-        if (!ssoWindow || ssoWindow.closed || typeof ssoWindow.closed === 'undefined') {
-          throw new Error('Please allow popups for this site to login to the community');
-        }
-        
-        const checkWindowClosed = setInterval(() => {
-          if (ssoWindow.closed) {
-            clearInterval(checkWindowClosed);
-            setAuthenticatingWithDiscourse(false);
-            
-            fetchDiscourseData(communityData.discourse_url);
-          }
-        }, 500);
-      } else {
-        throw new Error('Failed to initiate SSO login');
-      }
-    } catch (error) {
-      console.error('Error authenticating with Discourse:', error);
-      setDiscourseAuthError(error.message || 'Authentication failed');
-      setAuthenticatingWithDiscourse(false);
+  const fetchDiscourseData = async (discourseUrl, username) => {
+    if (!discourseUrl || !username) {
+      console.log('Missing URL or username:', { discourseUrl, username });
+      return;
     }
-  };
-
-  const fetchDiscourseData = async (discourseUrl) => {
-    if (!discourseUrl) return;
     
     try {
-      const [topicsResponse, categoriesResponse] = await Promise.all([
-        axios.get(`${discourseUrl}/latest.json?include_user_details=true`, {
-          withCredentials: true
-        }),
-        axios.get(`${discourseUrl}/categories.json`, {
-          withCredentials: true
-        })
-      ]);
+      setLoading(true);
 
-      const fetchedTopics = topicsResponse.data.topic_list.topics;
-      const users = topicsResponse.data.users || [];
+      // Get categories
+      const categoriesData = await discourseService.getCategories();
+      console.log('Categories:', categoriesData);
+      setCategories(categoriesData.category_list.categories);
 
-      const enhancedTopics = fetchedTopics.map(topic => {
-        const posterDetails = users.find(u => u.id === topic.posters?.[0]?.user_id);
-        return {
-          ...topic,
-          poster: posterDetails || null
-        };
-      });
+      // Get all topics from each category
+      const allTopics = [];
+      for (const category of categoriesData.category_list.categories) {
+        try {
+          const categoryTopicsData = await discourseService.getCategoryTopics(category.id);
+          console.log(`Topics for category ${category.id}:`, categoryTopicsData);
+          
+          if (categoryTopicsData.topic_list && categoryTopicsData.topic_list.topics) {
+            // Get details for each topic
+            const topicsWithDetails = await Promise.all(
+              categoryTopicsData.topic_list.topics.map(async (topic) => {
+                try {
+                  const topicDetails = await discourseService.getTopic(topic.id);
+                  
+                  // Extract the first post from the topic details
+                  const firstPost = topicDetails.post_stream?.posts[0];
+                  if (firstPost) {
+                    const postDetails = await discourseService.getPost(firstPost.id);
+                    return {
+                      ...topic,
+                      category_id: category.id,
+                      posts: topicDetails.post_stream.posts,
+                      firstPost: postDetails,
+                      like_count: postDetails.like_count || 0,
+                      user_liked: postDetails.user_liked || false,
+                      posts_count: topicDetails.posts_count || 1
+                    };
+                  }
+                  return {
+                    ...topic,
+                    category_id: category.id
+                  };
+                } catch (error) {
+                  console.error(`Error fetching topic ${topic.id}:`, error);
+                  return {
+                    ...topic,
+                    category_id: category.id
+                  };
+                }
+              })
+            );
+            
+            allTopics.push(...topicsWithDetails);
+          }
+        } catch (error) {
+          console.error(`Error fetching topics for category ${category.id}:`, error);
+        }
+      }
 
-      setTopics(enhancedTopics);
-      setFilteredTopics(enhancedTopics);
-      setCategories(categoriesResponse.data.category_list.categories);
-      setLoading(false);
+      console.log('All topics with details:', allTopics);
+      setTopics(allTopics);
+      setFilteredTopics(allTopics);
+      
     } catch (error) {
       console.error('Error fetching Discourse data:', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -168,6 +173,41 @@ const CommunityFeed = () => {
 
   const handleTopicClick = (topicId) => {
     navigate(`/community/${id}/topic/${topicId}`);
+  };
+
+  // Handle post creation
+  const handleCreatePost = async () => {
+    if (!newPost.trim()) return;
+
+    try {
+      const response = await discourseService.createTopic({
+        title: 'New Post', // You might want to add a title input field
+        raw: newPost,
+        category_id: activeCategory === 'all' ? undefined : activeCategory
+      });
+
+      // Refresh the feed after posting
+      if (response) {
+        setNewPost('');
+        fetchDiscourseData(communityData.discourse_url, discourseUser.username);
+      }
+    } catch (error) {
+      console.error('Error creating post:', error);
+    }
+  };
+
+  // Handle like action
+  const handleLike = async (postId) => {
+    try {
+      await discourseService.performPostAction({
+        id: postId,
+        actionType: 'like'
+      });
+      // Refresh the post data
+      fetchDiscourseData(communityData.discourse_url, discourseUser.username);
+    } catch (error) {
+      console.error('Error liking post:', error);
+    }
   };
 
   if (loading || authenticatingWithDiscourse) {
@@ -272,8 +312,8 @@ const CommunityFeed = () => {
             <div className="space-y-4">
               {filteredTopics.map(topic => {
                 const category = categories.find(c => c.id === topic.category_id);
-                const replyCount = (topic.posts_count || 1) - 1;
-
+                const firstPost = topic.firstPost || topic.posts?.[0];
+                
                 return (
                   <div 
                     key={topic.id} 
@@ -282,14 +322,14 @@ const CommunityFeed = () => {
                   >
                     <div className="flex items-start space-x-3">
                       <img
-                        src={getAvatarUrl(topic.poster?.avatar_template)}
+                        src={getAvatarUrl(firstPost?.avatar_template)}
                         alt=""
                         className="w-10 h-10 rounded-full"
                       />
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
-                            <span className="font-medium">{topic.poster?.username || topic.last_poster_username || 'Unknown User'}</span>
+                            <span className="font-medium">{firstPost?.username}</span>
                             <span className="text-gray-500 text-sm">
                               {new Date(topic.created_at).toLocaleDateString()}
                             </span>
@@ -297,69 +337,46 @@ const CommunityFeed = () => {
                               <span 
                                 className="text-xs px-2 py-1 rounded-full"
                                 style={{
-                                  backgroundColor: category.color ? `#${category.color}15` : '#e5e7eb1a',
-                                  color: category.color ? `#${category.color}` : '#6b7280',
-                                  border: category.color ? `1px solid #${category.color}30` : '1px solid #e5e7eb'
+                                  backgroundColor: `#${category.color}15`,
+                                  color: `#${category.color}`,
+                                  border: `1px solid #${category.color}30`
                                 }}
                               >
-                                {category.name || 'General'}
+                                {category.name}
                               </span>
                             )}
                           </div>
                         </div>
                         <h3 className="font-medium mt-2">{topic.title}</h3>
+                        {firstPost && (
+                          <div 
+                            className="mt-2 text-gray-600 text-sm line-clamp-2"
+                            dangerouslySetInnerHTML={{ __html: firstPost.cooked }}
+                          />
+                        )}
                         <div className="flex items-center space-x-4 mt-3">
-                          <div className="flex items-center space-x-1 text-gray-500">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleLike(firstPost?.id);
+                            }}
+                            className={`flex items-center space-x-1 ${
+                              topic.user_liked ? 'text-purple-600' : 'text-gray-500'
+                            }`}
+                          >
                             <ThumbsUp className="w-4 h-4" />
-                            <span>{topic.like_count || 0} likes</span>
-                          </div>
+                            <span>{topic.like_count || 0}</span>
+                          </button>
                           <div className="flex items-center space-x-1 text-gray-500">
                             <MessageCircle className="w-4 h-4" />
-                            <span>{replyCount} replies</span>
+                            <span>{topic.posts_count - 1}</span>
                           </div>
                           <div className="flex items-center space-x-1 text-gray-500">
-                            <Users className="w-4 h-4" />
-                            <span>{topic.participant_count} participants</span>
-                          </div>
-                          <div className="flex items-center space-x-1 text-gray-500">
-                            <svg 
-                              className="w-4 h-4" 
-                              fill="none" 
-                              stroke="currentColor" 
-                              viewBox="0 0 24 24"
-                            >
-                              <path 
-                                strokeLinecap="round" 
-                                strokeLinejoin="round" 
-                                strokeWidth={2} 
-                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" 
-                              />
-                              <path 
-                                strokeLinecap="round" 
-                                strokeLinejoin="round" 
-                                strokeWidth={2} 
-                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" 
-                              />
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                             </svg>
-                            <span>{topic.views} views</span>
-                          </div>
-                          <div className="flex items-center space-x-1 text-gray-500">
-                            <svg 
-                              className="w-4 h-4" 
-                              fill="none" 
-                              stroke="currentColor" 
-                              viewBox="0 0 24 24"
-                            >
-                              <path 
-                                strokeLinecap="round" 
-                                strokeLinejoin="round" 
-                                strokeWidth={2} 
-                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" 
-                              />
-                            </svg>
-                            <span>
-                              {new Date(topic.last_posted_at).toLocaleDateString()}
-                            </span>
+                            <span>{topic.views}</span>
                           </div>
                         </div>
                       </div>
