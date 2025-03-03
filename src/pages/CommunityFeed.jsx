@@ -595,15 +595,15 @@ const CommunityFeed = () => {
                             )}
                           </div>
                           
-                          {imageUrl && (
+                          {topic.image_url && (
                             <div className="flex-shrink-0">
                               <img
-                                src={imageUrl}
+                                src={topic.image_url}
                                 alt=""
                                 className="w-32 h-32 object-cover rounded-lg"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  window.open(imageUrl, '_blank');
+                                  window.open(topic.image_url, '_blank');
                                 }}
                               />
                             </div>
@@ -623,15 +623,15 @@ const CommunityFeed = () => {
                             } hover:text-purple-600 transition-colors duration-200`}
                           >
                             <ThumbsUp className="w-4 h-4" />
-                            <span>{topic.like_count || 0}</span>
+                            <span>{topic.like_count || 0} Likes</span>
                           </button>
                           <div className="flex items-center space-x-1 text-gray-500">
                             <MessageCircle className="w-4 h-4" />
-                            <span>{topic.posts_count - 1}</span>
+                            <span>{topic.posts_count - 1} Comments</span>
                           </div>
                           <div className="flex items-center space-x-1 text-gray-500">
                             <Eye className="w-4 h-4" />
-                            <span>{topic.views}</span>
+                            <span>{topic.views} Views</span>
                           </div>
                         </div>
                       </div>
