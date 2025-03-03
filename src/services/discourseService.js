@@ -155,7 +155,7 @@ export const discourseService = {
           method: 'POST',
           headers: {
             'Api-Key': API_KEY,
-            'Api-Username': 'srijancursor_m7rxo3h',
+            'Api-Username': username,
           },
           body: formData
         });
@@ -174,7 +174,7 @@ export const discourseService = {
         method: 'POST',
         headers: {
           ...headers,
-          'Api-Username': 'srijancursor_m7rxo3h',
+          'Api-Username': username,
         },
         body: JSON.stringify({
           title,
