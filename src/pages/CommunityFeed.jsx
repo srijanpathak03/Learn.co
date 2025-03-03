@@ -26,6 +26,7 @@ const CommunityFeed = () => {
   const [discourseAuthError, setDiscourseAuthError] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [discourseMapping, setDiscourseMapping] = useState(null);
 
   useEffect(() => {
     if (!user) {
@@ -62,10 +63,22 @@ const CommunityFeed = () => {
         console.log('Mapping Response:', mappingResponse.data);
 
         if (mappingResponse.data.success) {
-          setDiscourseUser(mappingResponse.data.discourseUser);
+          const discourseUser = mappingResponse.data.discourseUser;
+          setDiscourseUser(discourseUser);
+          // Store the username in the mapping state
+          setDiscourseMapping({
+            discourseUsername: discourseUser.username,
+            discourseUserId: discourseUser.id
+          });
+          
+          console.log('Set discourse mapping:', {
+            discourseUsername: discourseUser.username,
+            discourseUserId: discourseUser.id
+          });
+
           await fetchDiscourseData(
             communityResponse.data.discourse_url, 
-            mappingResponse.data.discourseUser.username
+            discourseUser.username
           );
         }
         
@@ -179,16 +192,29 @@ const CommunityFeed = () => {
       return;
     }
 
+    console.log('Current discourse mapping:', discourseMapping);
+    
+    if (!discourseMapping?.discourseUsername) {
+      console.error('Missing discourse username:', discourseMapping);
+      setError('User not properly mapped to Discourse');
+      return;
+    }
+
     try {
       setIsCreatingPost(true);
       setError(null);
+
+      console.log('Attempting to create post with username:', discourseMapping.discourseUsername);
 
       await discourseService.createTopic({
         title: newPostTitle,
         raw: newPostContent,
         category: activeCategory === 'all' ? categories[0]?.id : activeCategory,
-        image: selectedImage
+        image: selectedImage,
+        username: discourseMapping.discourseUsername
       });
+
+      console.log('Post created successfully');
 
       // Clear form
       setNewPostTitle('');
@@ -197,7 +223,7 @@ const CommunityFeed = () => {
       setImagePreview(null);
       
       // Refresh the feed
-      await fetchDiscourseData(communityData.discourse_url, discourseUser.username);
+      await fetchDiscourseData(communityData.discourse_url, discourseMapping.discourseUsername);
       
     } catch (error) {
       console.error('Error creating post:', error);
@@ -213,29 +239,35 @@ const CommunityFeed = () => {
       return;
     }
 
-    if (!discourseUser?.username) {
-      console.error('No discourse username found');
+    console.log('Current discourse mapping for like:', discourseMapping);
+
+    if (!discourseMapping?.discourseUsername) {
+      console.error('Missing discourse username for like action:', discourseMapping);
+      setError('User not properly mapped to Discourse');
       return;
     }
 
     try {
+      console.log('Attempting to like post:', {
+        postId,
+        username: discourseMapping.discourseUsername
+      });
+
       await discourseService.performPostAction({
         id: postId,
         actionType: 'like',
-        username: discourseUser.username
+        username: discourseMapping.discourseUsername
       });
 
-      // Refresh the feed to update like counts
-      await fetchDiscourseData(communityData.discourse_url, discourseUser.username);
+      console.log('Like action successful');
+
+      // Refresh the feed
+      await fetchDiscourseData(communityData.discourse_url, discourseMapping.discourseUsername);
     } catch (error) {
-      // Show user-friendly error message
       const errorMessage = error.message || 'Error liking post. Please try again.';
+      console.error('Like action failed:', error);
       setError(errorMessage);
-      
-      // Clear error after 3 seconds
       setTimeout(() => setError(null), 3000);
-      
-      console.error('Error liking post:', error);
     }
   };
 
@@ -337,7 +369,7 @@ const CommunityFeed = () => {
 
           <div className="flex-1">
             <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-              <div className="flex items-center space-x-3 mb-4">
+              <div className="flex items-start space-x-3">
                 <img
                   src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName || 'User'}&background=random`}
                   alt=""

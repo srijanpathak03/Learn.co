@@ -141,7 +141,7 @@ export const discourseService = {
   },
 
   // Create a new topic (post)
-  createTopic: async ({ title, raw, category, image }) => {
+  createTopic: async ({ title, raw, category, image, username }) => {
     return enqueueRequest(async () => {
       let imageUrl = '';
       
@@ -150,12 +150,12 @@ export const discourseService = {
         const formData = new FormData();
         formData.append('type', 'composer');
         formData.append('files[]', image);
-
+        console.log("Username is ", username);
         const uploadResponse = await fetch('/api/uploads.json', {
           method: 'POST',
           headers: {
             'Api-Key': API_KEY,
-            'Api-Username': API_USERNAME,
+            'Api-Username': 'srijancursor_m7rxo3h',
           },
           body: formData
         });
@@ -165,16 +165,17 @@ export const discourseService = {
         }
 
         const uploadData = await uploadResponse.json();
-        // Store just the relative path
         imageUrl = uploadData.url;
 
-        // Add the image to the post content using Markdown syntax
         raw = `${raw}\n\n<div class="uploaded-image">${imageUrl}</div>\n\n![${image.name}](${imageUrl})`;
       }
 
       const response = await fetch('/api/posts.json', {
         method: 'POST',
-        headers,
+        headers: {
+          ...headers,
+          'Api-Username': 'srijancursor_m7rxo3h',
+        },
         body: JSON.stringify({
           title,
           raw,
@@ -226,11 +227,11 @@ export const discourseService = {
             method: 'POST',
             headers: {
               ...headers,
-              'Api-Username': username || API_USERNAME
+              'Api-Username': username,
             },
             body: JSON.stringify({
               id: parseInt(id),
-              post_action_type_id: 2, // 2 is for like action
+              post_action_type_id: 2,
               flag_topic: false
             })
           });
@@ -238,7 +239,6 @@ export const discourseService = {
           const data = await response.json();
           
           if (!response.ok) {
-            // Handle specific error cases
             if (response.status === 403) {
               if (data.errors?.[0]?.includes('already performed this action')) {
                 throw new Error('You have already liked this post');
