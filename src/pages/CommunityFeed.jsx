@@ -206,7 +206,7 @@ const CommunityFeed = () => {
 
       console.log('Attempting to create post with username:', discourseMapping.discourseUsername);
 
-      await discourseService.createTopic({
+      const newTopic = await discourseService.createTopic({
         title: newPostTitle,
         raw: newPostContent,
         category: activeCategory === 'all' ? categories[0]?.id : activeCategory,
@@ -214,7 +214,7 @@ const CommunityFeed = () => {
         username: discourseMapping.discourseUsername
       });
 
-      console.log('Post created successfully');
+      console.log('Post created successfully:', newTopic);
 
       // Clear form
       setNewPostTitle('');
@@ -222,8 +222,34 @@ const CommunityFeed = () => {
       setSelectedImage(null);
       setImagePreview(null);
       
-      // Refresh the feed
-      await fetchDiscourseData(communityData.discourse_url, discourseMapping.discourseUsername);
+      // Instead of refetching everything, add the new topic to the state
+      if (newTopic && newTopic.id) {
+        // Fetch just this new topic's details
+        const topicDetails = await discourseService.getTopic(newTopic.id);
+        const firstPost = topicDetails.post_stream?.posts?.[0];
+        
+        if (firstPost) {
+          const postDetails = await discourseService.getPost(firstPost.id);
+          
+          const newTopicWithDetails = {
+            ...newTopic,
+            firstPost: postDetails,
+            post_id: firstPost.id,
+            like_count: 0,
+            user_liked: false,
+            category: categories.find(c => c.id === (activeCategory === 'all' ? categories[0]?.id : activeCategory))
+          };
+          
+          // Add to beginning of topics list
+          const updatedTopics = [newTopicWithDetails, ...topics];
+          setTopics(updatedTopics);
+          
+          // Update filtered topics if needed
+          if (activeCategory === 'all' || activeCategory === newTopicWithDetails.category_id) {
+            setFilteredTopics([newTopicWithDetails, ...filteredTopics]);
+          }
+        }
+      }
       
     } catch (error) {
       console.error('Error creating post:', error);
@@ -253,6 +279,36 @@ const CommunityFeed = () => {
         username: discourseMapping.discourseUsername
       });
 
+      // Find the topic that contains this post
+      const topicIndex = topics.findIndex(topic => topic.firstPost?.id === postId);
+      
+      if (topicIndex === -1) {
+        console.error('Could not find topic with post ID:', postId);
+        return;
+      }
+      
+      const topic = topics[topicIndex];
+      const isCurrentlyLiked = topic.user_liked;
+      
+      // Optimistically update UI
+      const updatedTopics = [...topics];
+      updatedTopics[topicIndex] = {
+        ...topic,
+        like_count: isCurrentlyLiked ? topic.like_count - 1 : topic.like_count + 1,
+        user_liked: !isCurrentlyLiked
+      };
+      
+      setTopics(updatedTopics);
+      
+      // Also update filtered topics if this topic is in the current view
+      const filteredIndex = filteredTopics.findIndex(topic => topic.firstPost?.id === postId);
+      if (filteredIndex !== -1) {
+        const updatedFiltered = [...filteredTopics];
+        updatedFiltered[filteredIndex] = updatedTopics[topicIndex];
+        setFilteredTopics(updatedFiltered);
+      }
+
+      // Make the actual API call
       await discourseService.performPostAction({
         id: postId,
         actionType: 'like',
@@ -260,13 +316,38 @@ const CommunityFeed = () => {
       });
 
       console.log('Like action successful');
-
-      // Refresh the feed
-      await fetchDiscourseData(communityData.discourse_url, discourseMapping.discourseUsername);
+      
+      // No need to refetch all data - we've already updated the UI
+      
     } catch (error) {
       const errorMessage = error.message || 'Error liking post. Please try again.';
       console.error('Like action failed:', error);
       setError(errorMessage);
+      
+      // Revert the optimistic update if the API call failed
+      const topicIndex = topics.findIndex(topic => topic.firstPost?.id === postId);
+      if (topicIndex !== -1) {
+        // Fetch just this post's updated details
+        const postDetails = await discourseService.getPost(postId);
+        
+        const updatedTopics = [...topics];
+        updatedTopics[topicIndex] = {
+          ...topics[topicIndex],
+          like_count: postDetails.like_count || 0,
+          user_liked: postDetails.user_liked || false
+        };
+        
+        setTopics(updatedTopics);
+        
+        // Also update filtered topics if needed
+        const filteredIndex = filteredTopics.findIndex(topic => topic.firstPost?.id === postId);
+        if (filteredIndex !== -1) {
+          const updatedFiltered = [...filteredTopics];
+          updatedFiltered[filteredIndex] = updatedTopics[topicIndex];
+          setFilteredTopics(updatedFiltered);
+        }
+      }
+      
       setTimeout(() => setError(null), 3000);
     }
   };
