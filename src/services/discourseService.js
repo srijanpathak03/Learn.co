@@ -141,15 +141,44 @@ export const discourseService = {
   },
 
   // Create a new topic (post)
-  createTopic: async ({ title, raw, category_id }) => {
+  createTopic: async ({ title, raw, category, image }) => {
     return enqueueRequest(async () => {
-      const response = await fetch('/api/posts', {
+      let imageUrl = '';
+      
+      // If there's an image, upload it first
+      if (image) {
+        const formData = new FormData();
+        formData.append('type', 'composer');
+        formData.append('files[]', image);
+
+        const uploadResponse = await fetch('/api/uploads.json', {
+          method: 'POST',
+          headers: {
+            'Api-Key': API_KEY,
+            'Api-Username': API_USERNAME,
+          },
+          body: formData
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error('Failed to upload image');
+        }
+
+        const uploadData = await uploadResponse.json();
+        // Store just the relative path
+        imageUrl = uploadData.url;
+
+        // Add the image to the post content using Markdown syntax
+        raw = `${raw}\n\n<div class="uploaded-image">${imageUrl}</div>\n\n![${image.name}](${imageUrl})`;
+      }
+
+      const response = await fetch('/api/posts.json', {
         method: 'POST',
         headers,
         body: JSON.stringify({
           title,
           raw,
-          category_id,
+          category: parseInt(category),
           archetype: 'regular',
           created_at: new Date().toISOString()
         })
@@ -192,25 +221,38 @@ export const discourseService = {
   performPostAction: async ({ id, actionType, username }) => {
     return enqueueRequest(async () => {
       if (actionType === 'like') {
-        const response = await fetch('/api/post_actions.json', {
-          method: 'POST',
-          headers: {
-            ...headers,
-            'Api-Username': username || API_USERNAME
-          },
-          body: JSON.stringify({
-            id: parseInt(id),
-            post_action_type_id: 2, // 2 is for like action
-            flag_topic: false
-          })
-        });
+        try {
+          const response = await fetch('/api/post_actions.json', {
+            method: 'POST',
+            headers: {
+              ...headers,
+              'Api-Username': username || API_USERNAME
+            },
+            body: JSON.stringify({
+              id: parseInt(id),
+              post_action_type_id: 2, // 2 is for like action
+              flag_topic: false
+            })
+          });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
+          const data = await response.json();
+          
+          if (!response.ok) {
+            // Handle specific error cases
+            if (response.status === 403) {
+              if (data.errors?.[0]?.includes('already performed this action')) {
+                throw new Error('You have already liked this post');
+              } else if (data.errors?.[0]?.includes('own post')) {
+                throw new Error('You cannot like your own post');
+              }
+            }
+            throw new Error(data.errors?.[0] || `HTTP error! status: ${response.status}`);
+          }
+
+          return data;
+        } catch (error) {
+          throw error;
         }
-
-        return response.json();
       }
     });
   },

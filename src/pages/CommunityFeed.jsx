@@ -24,6 +24,8 @@ const CommunityFeed = () => {
   const [discourseUser, setDiscourseUser] = useState(null);
   const [authenticatingWithDiscourse, setAuthenticatingWithDiscourse] = useState(false);
   const [discourseAuthError, setDiscourseAuthError] = useState(null);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
 
   useEffect(() => {
     if (!user) {
@@ -161,9 +163,19 @@ const CommunityFeed = () => {
     navigate(`/community/${id}/topic/${topicId}`);
   };
 
+  const handleImageSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setSelectedImage(file);
+      // Create preview URL
+      const previewUrl = URL.createObjectURL(file);
+      setImagePreview(previewUrl);
+    }
+  };
+
   const handleCreatePost = async () => {
-    if (!newPostTitle.trim() || !newPostContent.trim()) {
-      setError('Please provide both title and content for your post');
+    if (!newPostTitle.trim()) {
+      setError('Please provide a title for your post');
       return;
     }
 
@@ -174,12 +186,15 @@ const CommunityFeed = () => {
       await discourseService.createTopic({
         title: newPostTitle,
         raw: newPostContent,
-        category_id: activeCategory === 'all' ? categories[0]?.id : activeCategory
+        category: activeCategory === 'all' ? categories[0]?.id : activeCategory,
+        image: selectedImage
       });
 
       // Clear form
       setNewPostTitle('');
       setNewPostContent('');
+      setSelectedImage(null);
+      setImagePreview(null);
       
       // Refresh the feed
       await fetchDiscourseData(communityData.discourse_url, discourseUser.username);
@@ -193,37 +208,50 @@ const CommunityFeed = () => {
   };
 
   const handleLike = async (postId) => {
-    console.log('handleLike called with postId:', postId);
-    
     if (!postId) {
       console.error('No post ID provided');
       return;
     }
 
     if (!discourseUser?.username) {
-      console.error('No discourse username found:', discourseUser);
+      console.error('No discourse username found');
       return;
     }
 
     try {
-      console.log('Attempting to like post:', {
-        postId,
-        username: discourseUser.username
-      });
-
       await discourseService.performPostAction({
         id: postId,
         actionType: 'like',
         username: discourseUser.username
       });
 
-      console.log('Like action successful');
-
       // Refresh the feed to update like counts
       await fetchDiscourseData(communityData.discourse_url, discourseUser.username);
     } catch (error) {
+      // Show user-friendly error message
+      const errorMessage = error.message || 'Error liking post. Please try again.';
+      setError(errorMessage);
+      
+      // Clear error after 3 seconds
+      setTimeout(() => setError(null), 3000);
+      
       console.error('Error liking post:', error);
     }
+  };
+
+  const extractImageFromContent = (cooked) => {
+    if (!cooked) return null;
+    
+    // First try to find our uploaded image marker
+    const div = document.createElement('div');
+    div.innerHTML = cooked;
+    const uploadedImage = div.querySelector('.uploaded-image');
+    if (uploadedImage) {
+      return uploadedImage.textContent;
+    }
+    
+    // If no uploaded image found, return null
+    return null;
   };
 
   if (loading || authenticatingWithDiscourse) {
@@ -260,6 +288,13 @@ const CommunityFeed = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Error Toast */}
+        {error && (
+          <div className="fixed top-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg shadow-md">
+            {error}
+          </div>
+        )}
+        
         <div className="flex gap-8">
           <div className="w-64 flex-shrink-0">
             <div className="bg-white rounded-lg shadow-sm p-4 sticky top-20">
@@ -322,14 +357,56 @@ const CommunityFeed = () => {
                     onChange={(e) => setNewPostContent(e.target.value)}
                     className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px]"
                   />
+                  
+                  {/* Image upload section */}
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => document.getElementById('image-upload').click()}
+                      className="flex items-center space-x-2 text-gray-600 hover:text-purple-600"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span>Add Image</span>
+                    </button>
+                    <input
+                      id="image-upload"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      className="hidden"
+                    />
+                  </div>
+
+                  {/* Image preview */}
+                  {imagePreview && (
+                    <div className="relative">
+                      <img
+                        src={imagePreview}
+                        alt="Preview"
+                        className="max-h-40 rounded-lg"
+                      />
+                      <button
+                        onClick={() => {
+                          setSelectedImage(null);
+                          setImagePreview(null);
+                        }}
+                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
               {error && (
-                <div className="text-red-500 text-sm mb-2">
+                <div className="text-red-500 text-sm mt-2">
                   {error}
                 </div>
               )}
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center mt-4">
                 <div className="text-sm text-gray-500">
                   Posting in: {activeCategory === 'all' 
                     ? categories[0]?.name 
@@ -355,7 +432,8 @@ const CommunityFeed = () => {
 
             <div className="space-y-4">
               {filteredTopics.map(topic => {
-                console.log('Rendering topic:', topic); // Log each topic as it's rendered
+                const firstPost = topic.firstPost || topic.posts?.[0];
+                const imageUrl = extractImageFromContent(firstPost?.cooked);
                 
                 return (
                   <div 
@@ -365,14 +443,14 @@ const CommunityFeed = () => {
                   >
                     <div className="flex items-start space-x-3">
                       <img
-                        src={getAvatarUrl(topic.firstPost?.avatar_template)}
+                        src={getAvatarUrl(firstPost?.avatar_template)}
                         alt=""
                         className="w-10 h-10 rounded-full"
                       />
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
-                            <span className="font-medium">{topic.firstPost?.username}</span>
+                            <span className="font-medium">{firstPost?.username}</span>
                             <span className="text-gray-500 text-sm">
                               {new Date(topic.created_at).toLocaleDateString()}
                             </span>
@@ -390,29 +468,41 @@ const CommunityFeed = () => {
                             )}
                           </div>
                         </div>
-                        <h3 className="font-medium mt-2">{topic.title}</h3>
-                        {topic.firstPost && (
-                          <div 
-                            className="mt-2 text-gray-600 text-sm line-clamp-2"
-                            dangerouslySetInnerHTML={{ __html: topic.firstPost.cooked }}
-                          />
-                        )}
+                        
+                        <div className="flex mt-2 space-x-4">
+                          <div className="flex-1">
+                            <h3 className="font-medium">{topic.title}</h3>
+                            {firstPost && (
+                              <div 
+                                className="mt-2 text-gray-600 text-sm line-clamp-2"
+                                dangerouslySetInnerHTML={{ 
+                                  __html: firstPost.cooked.replace(/<img[^>]*>/g, '') // Remove img tags from content
+                                }}
+                              />
+                            )}
+                          </div>
+                          
+                          {imageUrl && (
+                            <div className="flex-shrink-0">
+                              <img
+                                src={imageUrl}
+                                alt=""
+                                className="w-32 h-32 object-cover rounded-lg"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.open(imageUrl, '_blank');
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+
                         <div className="flex items-center space-x-4 mt-3">
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              const postId = topic.post_id || topic.firstPost?.id;
-                              console.log('Like button clicked:', {
-                                topicId: topic.id,
-                                postId,
-                                firstPost: topic.firstPost,
-                                topic
-                              });
-                              
-                              if (postId) {
-                                handleLike(postId);
-                              } else {
-                                console.error('No post ID found for topic:', topic);
+                              if (firstPost?.id) {
+                                handleLike(firstPost.id);
                               }
                             }}
                             className={`flex items-center space-x-1 ${
