@@ -8,7 +8,82 @@ const headers = {
   'Accept': 'application/json',
 };
 
+// Simple rate limiter
+const queue = [];
+let processing = false;
+
+const processQueue = async () => {
+  if (processing || queue.length === 0) return;
+  processing = true;
+  
+  while (queue.length > 0) {
+    const { fn, resolve, reject } = queue.shift();
+    try {
+      const result = await fn();
+      resolve(result);
+      // Wait 100ms between requests
+      await new Promise(r => setTimeout(r, 100));
+    } catch (error) {
+      reject(error);
+    }
+  }
+  
+  processing = false;
+};
+
+const enqueueRequest = (fn) => {
+  return new Promise((resolve, reject) => {
+    queue.push({ fn, resolve, reject });
+    processQueue();
+  });
+};
+
 export const discourseService = {
+  // Get all categories and latest topics
+  getLatestTopics: async () => {
+    return enqueueRequest(async () => {
+      const [categoriesResponse, latestResponse] = await Promise.all([
+        fetch('/api/categories.json', { headers }),
+        fetch('/api/latest.json', { headers })
+      ]);
+
+      if (!categoriesResponse.ok || !latestResponse.ok) {
+        throw new Error('Failed to fetch data');
+      }
+
+      const [categories, latest] = await Promise.all([
+        categoriesResponse.json(),
+        latestResponse.json()
+      ]);
+
+      // Map topics with their categories
+      const topicsWithDetails = latest.topic_list.topics.map(topic => ({
+        ...topic,
+        category: categories.category_list.categories.find(c => c.id === topic.category_id)
+      }));
+
+      return {
+        categories: categories.category_list.categories,
+        topics: topicsWithDetails
+      };
+    });
+  },
+
+  // Get single topic with details
+  getTopic: async (topicId) => {
+    return enqueueRequest(async () => {
+      const response = await fetch(`/api/t/${topicId}.json`, {
+        headers
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return response.json();
+    });
+  },
+
   // Get all categories
   getCategories: async () => {
     try {
@@ -65,31 +140,19 @@ export const discourseService = {
     }
   },
 
-  // Create a new topic in a category
+  // Create a new topic (post)
   createTopic: async ({ title, raw, category_id }) => {
-    try {
-      const response = await fetch('/api/posts.json', {
+    return enqueueRequest(async () => {
+      const response = await fetch('/api/posts', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ title, raw, category_id }),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      return response.json();
-    } catch (error) {
-      console.error('Error creating topic:', error);
-      throw error;
-    }
-  },
-
-  // Get a single topic with all posts
-  getTopic: async (topicId) => {
-    try {
-      // Use the correct endpoint for topic details
-      const response = await fetch(`/api/t/${topicId}.json`, {
-        method: 'GET',
-        headers,
+        body: JSON.stringify({
+          title,
+          raw,
+          category_id,
+          archetype: 'regular',
+          created_at: new Date().toISOString()
+        })
       });
 
       if (!response.ok) {
@@ -97,13 +160,8 @@ export const discourseService = {
         throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
-      console.log('Topic details response:', data);
-      return data;
-    } catch (error) {
-      console.error('Error getting topic:', error);
-      throw error;
-    }
+      return response.json();
+    });
   },
 
   // Create a reply to a topic
@@ -130,18 +188,21 @@ export const discourseService = {
     }
   },
 
-  // Perform post actions (like, unlike)
-  performPostAction: async ({ id, actionType }) => {
-    try {
-      if (actionType === 'like' || actionType === 'unlike') {
-        const response = await fetch(`/api/post_actions.json`, {
+  // Like/Unlike a post
+  performPostAction: async ({ id, actionType, username }) => {
+    return enqueueRequest(async () => {
+      if (actionType === 'like') {
+        const response = await fetch('/api/post_actions.json', {
           method: 'POST',
-          headers,
+          headers: {
+            ...headers,
+            'Api-Username': username || API_USERNAME
+          },
           body: JSON.stringify({
             id: parseInt(id),
             post_action_type_id: 2, // 2 is for like action
             flag_topic: false
-          }),
+          })
         });
 
         if (!response.ok) {
@@ -151,10 +212,7 @@ export const discourseService = {
 
         return response.json();
       }
-    } catch (error) {
-      console.error('Error performing post action:', error);
-      throw error;
-    }
+    });
   },
 
   // Get post details including likes

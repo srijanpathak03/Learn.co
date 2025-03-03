@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { serverbaseURL } from "../constant/index";
-import { MessageCircle, Users, Award, Settings, ThumbsUp } from 'lucide-react';
+import { MessageCircle, Users, Award, Settings, ThumbsUp, Eye } from 'lucide-react';
 import { AuthContext } from '../provider/AuthProvider';
 import { discourseService } from '../services/discourseService';
 
@@ -16,7 +16,10 @@ const CommunityFeed = () => {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState('all');
-  const [newPost, setNewPost] = useState('');
+  const [newPostTitle, setNewPostTitle] = useState('');
+  const [newPostContent, setNewPostContent] = useState('');
+  const [isCreatingPost, setIsCreatingPost] = useState(false);
+  const [error, setError] = useState(null);
   const [communityData, setCommunityData] = useState(null);
   const [discourseUser, setDiscourseUser] = useState(null);
   const [authenticatingWithDiscourse, setAuthenticatingWithDiscourse] = useState(false);
@@ -82,65 +85,48 @@ const CommunityFeed = () => {
     
     try {
       setLoading(true);
+      console.log('Fetching data with:', { discourseUrl, username });
 
-      // Get categories
-      const categoriesData = await discourseService.getCategories();
-      console.log('Categories:', categoriesData);
-      setCategories(categoriesData.category_list.categories);
-
-      // Get all topics from each category
-      const allTopics = [];
-      for (const category of categoriesData.category_list.categories) {
-        try {
-          const categoryTopicsData = await discourseService.getCategoryTopics(category.id);
-          console.log(`Topics for category ${category.id}:`, categoryTopicsData);
-          
-          if (categoryTopicsData.topic_list && categoryTopicsData.topic_list.topics) {
-            // Get details for each topic
-            const topicsWithDetails = await Promise.all(
-              categoryTopicsData.topic_list.topics.map(async (topic) => {
-                try {
-                  const topicDetails = await discourseService.getTopic(topic.id);
-                  
-                  // Extract the first post from the topic details
-                  const firstPost = topicDetails.post_stream?.posts[0];
-                  if (firstPost) {
-                    const postDetails = await discourseService.getPost(firstPost.id);
-                    return {
-                      ...topic,
-                      category_id: category.id,
-                      posts: topicDetails.post_stream.posts,
-                      firstPost: postDetails,
-                      like_count: postDetails.like_count || 0,
-                      user_liked: postDetails.user_liked || false,
-                      posts_count: topicDetails.posts_count || 1
-                    };
-                  }
-                  return {
-                    ...topic,
-                    category_id: category.id
-                  };
-                } catch (error) {
-                  console.error(`Error fetching topic ${topic.id}:`, error);
-                  return {
-                    ...topic,
-                    category_id: category.id
-                  };
-                }
-              })
-            );
-            
-            allTopics.push(...topicsWithDetails);
-          }
-        } catch (error) {
-          console.error(`Error fetching topics for category ${category.id}:`, error);
-        }
-      }
-
-      console.log('All topics with details:', allTopics);
-      setTopics(allTopics);
-      setFilteredTopics(allTopics);
+      // Get categories and topics in one call
+      const data = await discourseService.getLatestTopics();
+      console.log('Raw data from API:', data);
       
+      // Process topics to ensure we have post IDs
+      const processedTopics = await Promise.all(data.topics.map(async (topic) => {
+        try {
+          // Fetch full topic details to get the first post
+          const topicDetails = await discourseService.getTopic(topic.id);
+          console.log(`Topic ${topic.id} details:`, topicDetails);
+          
+          const firstPost = topicDetails.post_stream?.posts?.[0];
+          if (firstPost) {
+            console.log(`First post for topic ${topic.id}:`, firstPost);
+            // Get post details including likes
+            const postDetails = await discourseService.getPost(firstPost.id);
+            console.log(`Post details for ${firstPost.id}:`, postDetails);
+            
+            return {
+              ...topic,
+              firstPost: postDetails,
+              post_id: firstPost.id, // Explicitly store post_id
+              like_count: postDetails.like_count || 0,
+              user_liked: postDetails.user_liked || false,
+              category: data.categories.find(c => c.id === topic.category_id)
+            };
+          }
+          return topic;
+        } catch (error) {
+          console.error(`Error processing topic ${topic.id}:`, error);
+          return topic;
+        }
+      }));
+
+      console.log('Processed topics:', processedTopics);
+      
+      setCategories(data.categories);
+      setTopics(processedTopics);
+      setFilteredTopics(processedTopics);
+
     } catch (error) {
       console.error('Error fetching Discourse data:', error);
     } finally {
@@ -175,36 +161,66 @@ const CommunityFeed = () => {
     navigate(`/community/${id}/topic/${topicId}`);
   };
 
-  // Handle post creation
   const handleCreatePost = async () => {
-    if (!newPost.trim()) return;
+    if (!newPostTitle.trim() || !newPostContent.trim()) {
+      setError('Please provide both title and content for your post');
+      return;
+    }
 
     try {
-      const response = await discourseService.createTopic({
-        title: 'New Post', // You might want to add a title input field
-        raw: newPost,
-        category_id: activeCategory === 'all' ? undefined : activeCategory
+      setIsCreatingPost(true);
+      setError(null);
+
+      await discourseService.createTopic({
+        title: newPostTitle,
+        raw: newPostContent,
+        category_id: activeCategory === 'all' ? categories[0]?.id : activeCategory
       });
 
-      // Refresh the feed after posting
-      if (response) {
-        setNewPost('');
-        fetchDiscourseData(communityData.discourse_url, discourseUser.username);
-      }
+      // Clear form
+      setNewPostTitle('');
+      setNewPostContent('');
+      
+      // Refresh the feed
+      await fetchDiscourseData(communityData.discourse_url, discourseUser.username);
+      
     } catch (error) {
       console.error('Error creating post:', error);
+      setError('Failed to create post. Please try again.');
+    } finally {
+      setIsCreatingPost(false);
     }
   };
 
-  // Handle like action
   const handleLike = async (postId) => {
+    console.log('handleLike called with postId:', postId);
+    
+    if (!postId) {
+      console.error('No post ID provided');
+      return;
+    }
+
+    if (!discourseUser?.username) {
+      console.error('No discourse username found:', discourseUser);
+      return;
+    }
+
     try {
+      console.log('Attempting to like post:', {
+        postId,
+        username: discourseUser.username
+      });
+
       await discourseService.performPostAction({
         id: postId,
-        actionType: 'like'
+        actionType: 'like',
+        username: discourseUser.username
       });
-      // Refresh the post data
-      fetchDiscourseData(communityData.discourse_url, discourseUser.username);
+
+      console.log('Like action successful');
+
+      // Refresh the feed to update like counts
+      await fetchDiscourseData(communityData.discourse_url, discourseUser.username);
     } catch (error) {
       console.error('Error liking post:', error);
     }
@@ -292,27 +308,54 @@ const CommunityFeed = () => {
                   alt=""
                   className="w-10 h-10 rounded-full"
                 />
-                <input
-                  type="text"
-                  placeholder="Write something..."
-                  value={newPost}
-                  onChange={(e) => setNewPost(e.target.value)}
-                  className="flex-1 border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-              <div className="flex justify-between items-center">
-                <div className="flex space-x-2">
+                <div className="flex-1 space-y-3">
+                  <input
+                    type="text"
+                    placeholder="Post title..."
+                    value={newPostTitle}
+                    onChange={(e) => setNewPostTitle(e.target.value)}
+                    className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <textarea
+                    placeholder="Write your post content..."
+                    value={newPostContent}
+                    onChange={(e) => setNewPostContent(e.target.value)}
+                    className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px]"
+                  />
                 </div>
-                <button className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700">
-                  Post
+              </div>
+              {error && (
+                <div className="text-red-500 text-sm mb-2">
+                  {error}
+                </div>
+              )}
+              <div className="flex justify-between items-center">
+                <div className="text-sm text-gray-500">
+                  Posting in: {activeCategory === 'all' 
+                    ? categories[0]?.name 
+                    : categories.find(c => c.id === activeCategory)?.name || 'General'
+                  }
+                </div>
+                <button
+                  onClick={handleCreatePost}
+                  disabled={isCreatingPost}
+                  className={`bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2`}
+                >
+                  {isCreatingPost ? (
+                    <>
+                      <span className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></span>
+                      <span>Posting...</span>
+                    </>
+                  ) : (
+                    <span>Post</span>
+                  )}
                 </button>
               </div>
             </div>
 
             <div className="space-y-4">
               {filteredTopics.map(topic => {
-                const category = categories.find(c => c.id === topic.category_id);
-                const firstPost = topic.firstPost || topic.posts?.[0];
+                console.log('Rendering topic:', topic); // Log each topic as it's rendered
                 
                 return (
                   <div 
@@ -322,47 +365,59 @@ const CommunityFeed = () => {
                   >
                     <div className="flex items-start space-x-3">
                       <img
-                        src={getAvatarUrl(firstPost?.avatar_template)}
+                        src={getAvatarUrl(topic.firstPost?.avatar_template)}
                         alt=""
                         className="w-10 h-10 rounded-full"
                       />
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
-                            <span className="font-medium">{firstPost?.username}</span>
+                            <span className="font-medium">{topic.firstPost?.username}</span>
                             <span className="text-gray-500 text-sm">
                               {new Date(topic.created_at).toLocaleDateString()}
                             </span>
-                            {category && (
+                            {topic.category && (
                               <span 
                                 className="text-xs px-2 py-1 rounded-full"
                                 style={{
-                                  backgroundColor: `#${category.color}15`,
-                                  color: `#${category.color}`,
-                                  border: `1px solid #${category.color}30`
+                                  backgroundColor: `#${topic.category.color}15`,
+                                  color: `#${topic.category.color}`,
+                                  border: `1px solid #${topic.category.color}30`
                                 }}
                               >
-                                {category.name}
+                                {topic.category.name}
                               </span>
                             )}
                           </div>
                         </div>
                         <h3 className="font-medium mt-2">{topic.title}</h3>
-                        {firstPost && (
+                        {topic.firstPost && (
                           <div 
                             className="mt-2 text-gray-600 text-sm line-clamp-2"
-                            dangerouslySetInnerHTML={{ __html: firstPost.cooked }}
+                            dangerouslySetInnerHTML={{ __html: topic.firstPost.cooked }}
                           />
                         )}
                         <div className="flex items-center space-x-4 mt-3">
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleLike(firstPost?.id);
+                              const postId = topic.post_id || topic.firstPost?.id;
+                              console.log('Like button clicked:', {
+                                topicId: topic.id,
+                                postId,
+                                firstPost: topic.firstPost,
+                                topic
+                              });
+                              
+                              if (postId) {
+                                handleLike(postId);
+                              } else {
+                                console.error('No post ID found for topic:', topic);
+                              }
                             }}
                             className={`flex items-center space-x-1 ${
                               topic.user_liked ? 'text-purple-600' : 'text-gray-500'
-                            }`}
+                            } hover:text-purple-600 transition-colors duration-200`}
                           >
                             <ThumbsUp className="w-4 h-4" />
                             <span>{topic.like_count || 0}</span>
@@ -372,10 +427,7 @@ const CommunityFeed = () => {
                             <span>{topic.posts_count - 1}</span>
                           </div>
                           <div className="flex items-center space-x-1 text-gray-500">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
+                            <Eye className="w-4 h-4" />
                             <span>{topic.views}</span>
                           </div>
                         </div>
