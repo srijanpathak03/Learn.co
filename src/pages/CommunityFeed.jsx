@@ -641,10 +641,64 @@ const CommunityFeed = () => {
               })}
             </div>
           </div>
-
           <div className="w-64 flex-shrink-0">
-            <div className="bg-white rounded-lg shadow-sm p-4 sticky top-20">
-              <h3 className="font-medium mb-4">Leaderboard</h3>
+            <div className="bg-white rounded-lg shadow-sm p-4 sticky top-20 space-y-4">
+              <h3 className="font-medium text-lg mb-2">About Community</h3>
+              
+              {/* Community Image */}
+              {communityData?.image_url && (
+                <img 
+                  src={communityData.image_url} 
+                  alt={communityData?.name}
+                  className="w-full h-32 object-cover rounded-lg"
+                />
+              )}
+              
+              {/* Community Name */}
+              <h4 className="font-medium text-xl">{communityData?.name}</h4>
+              
+              {/* Community Description */}
+              <p className="text-gray-600 text-sm">
+                {communityData?.description}
+              </p>
+              
+              {/* Community Stats */}
+              <div className="border-t pt-4 mt-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-2xl font-semibold">
+                      {communityData?.member_count || 0}
+                    </div>
+                    <div className="text-sm text-gray-500">Members</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-semibold">
+                      {topics.length || 0}
+                    </div>
+                    <div className="text-sm text-gray-500">Posts</div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Community Creation Date */}
+              <div className="text-sm text-gray-500 pt-4 border-t">
+                Created {new Date(communityData?.created_at).toLocaleDateString()}
+              </div>
+              
+              {/* Community Rules or Additional Info */}
+              {communityData?.rules && (
+                <div className="pt-4 border-t">
+                  <h5 className="font-medium mb-2">Community Rules</h5>
+                  <ul className="text-sm text-gray-600 space-y-2">
+                    {communityData.rules.map((rule, index) => (
+                      <li key={index} className="flex items-start">
+                        <span className="mr-2">•</span>
+                        <span>{rule}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         </div>
