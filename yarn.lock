@@ -47,7 +47,7 @@ asynckit@^0.4.0:
   resolved "https://registry.npmjs.org/asynckit/-/asynckit-0.4.0.tgz"
   integrity sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==
 
-axios@^1.8.1:
+axios@^1.6.8, axios@^1.8.1:
   version "1.8.1"
   resolved "https://registry.npmjs.org/axios/-/axios-1.8.1.tgz"
   integrity sha512-NN+fvwH/kV01dYUQ3PTOZns4LWtWhOFCAhQ/pHb88WQ1hNe5V/dvFwc4VJcDL11LT9xSX0QtsR8sWUuyOuOq7g==
@@ -684,6 +684,11 @@ negotiator@0.6.3:
   resolved "https://registry.npmjs.org/negotiator/-/negotiator-0.6.3.tgz"
   integrity sha512-+EUsqGPLsM+j/zdChZjsnX51g4XrHFOIXwfnCVPGlQk/k5giakcKsuxCObBRu6DSm9opw/O6slWbJdghQM4bBg==
 
+nodemailer@^6.10.0:
+  version "6.10.0"
+  resolved "https://registry.npmjs.org/nodemailer/-/nodemailer-6.10.0.tgz"
+  integrity sha512-SQ3wZCExjeSatLE/HBaXS5vqUOQk6GtBdIIKxiFdmm01mOQZX/POJkO3SUX1wDiYcwUOJwT23scFSC9fY2H8IA==
+
 nodemon@^2.0.22:
   version "2.0.22"
   resolved "https://registry.npmjs.org/nodemon/-/nodemon-2.0.22.tgz"
@@ -781,6 +786,13 @@ raw-body@2.5.2:
     http-errors "2.0.0"
     iconv-lite "0.4.24"
     unpipe "1.0.0"
+
+razorpay@^2.9.6:
+  version "2.9.6"
+  resolved "https://registry.npmjs.org/razorpay/-/razorpay-2.9.6.tgz"
+  integrity sha512-zsHAQzd6e1Cc6BNoCNZQaf65ElL6O6yw0wulxmoG5VQDr363fZC90Mp1V5EktVzG45yPyNomNXWlf4cQ3622gQ==
+  dependencies:
+    axios "^1.6.8"
 
 readdirp@~3.6.0:
   version "3.6.0"

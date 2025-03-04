@@ -9,6 +9,19 @@ const userSchema = new mongoose.Schema({
   communities: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Community' }],
   createdCommunities: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Community' }],
   createdAt: { type: Date, default: Date.now },
+  plan: String,
+  subscriptionId: String,
+  subscriptionDate: Date,
+  subscriptionStatus: String,
+  
+  payments: [{
+    payment_id: String,
+    subscription_id: String,
+    plan_id: String,
+    amount: Number,
+    plan: String,  
+    date: Date
+  }],
   discourseUsers: [{
     communityId: { type: mongoose.Schema.Types.ObjectId, ref: 'Community' },
     discourseUserId: Number,
@@ -19,6 +32,8 @@ const userSchema = new mongoose.Schema({
 // Drop any existing indexes and create only the ones we want
 userSchema.index({ uid: 1 }, { unique: true });
 userSchema.index({ uid: 1, 'discourseUsers.communityId': 1 });
+userSchema.index({ 'payments.subscription_id': 1 });
+
 
 // Add this to drop the email unique index if it exists
 userSchema.pre('save', async function() {

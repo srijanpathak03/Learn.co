@@ -10,7 +10,7 @@ app.use(cors());
 app.use(express.json());
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect("mongodb+srv://balpreet:ct8bCW7LDccrGAmQ@cluster0.2pwq0w2.mongodb.net/discourseDB")
   .then(() => console.log('Connected to MongoDB successfully.'))
   .catch(err => console.error('MongoDB connection error:', err));
 
@@ -21,11 +21,16 @@ app.locals.db = mongoose.connection;
 const communityRoutes = require('./routes/communityRoutes');
 const authRoutes = require('./routes/authRoutes');
 const discourseRoutes = require('./routes/discourseRoutes');
+const payment = require('./routes/payment');
+
 
 // Use routes
 app.use('/', communityRoutes);
 app.use('/', authRoutes);
 app.use('/discourse', discourseRoutes); // All discourse routes will be prefixed with /discourse
+app.use('/', payment);
+
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

@@ -1,7 +1,7 @@
 const { MongoClient, ObjectID } = require('mongodb');
 require("dotenv").config();
 
-const uri = process.env.MONGODB_URI;
+const uri = "mongodb+srv://balpreet:ct8bCW7LDccrGAmQ@cluster0.2pwq0w2.mongodb.net/discourseDB";
              
 const client = new MongoClient(uri, {
     useNewUrlParser: true,
@@ -32,6 +32,7 @@ async function getCollections() {
     const db = await getDb();
     return {
         communityCollection: db.collection("communityCollection")
+
     };
 }
 
