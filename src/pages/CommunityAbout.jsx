@@ -59,48 +59,51 @@ const CommunityAbout = () => {
     checkMembershipAndFetchCommunity();
   }, [id, user, navigate]);
 
-  // Function to initiate Discourse SSO login
-  const initiateDiscourseLogin = async (discourseUser) => {
-    try {
-      setAuthenticatingWithDiscourse(true);
+  // // Function to initiate Discourse SSO login
+  // const initiateDiscourseLogin = async (discourseUser) => {
+  //   try {
+  //     setAuthenticatingWithDiscourse(true);
       
-      // Get community data to get Discourse URL
-      const communityResponse = await axios.get(`${serverbaseURL}community/${id}`);
-      setCommunity(communityResponse.data);
+  //     // Get community data to get Discourse URL
+  //     const communityResponse = await axios.get(`${serverbaseURL}community/${id}`);
+  //     setCommunity(communityResponse.data);
       
-      // Initiate SSO login
-      const ssoResponse = await axios.get(`${serverbaseURL}discourse/initiate-sso/${id}`, {
-        params: { userId: user.uid }
-      });
+  //     const hardcodedCommunityId = ""; 
+
+  //     const ssoResponse = await axios.get(`${serverbaseURL}discourse/sso/${id}`, {
+  //       params: { userId: user.uid, communityId: id }
+  //     });
       
-      if (ssoResponse.data.success && ssoResponse.data.redirect_url) {
-        // Open Discourse SSO in a new window
-        const ssoWindow = window.open(ssoResponse.data.redirect_url, 'discourse_sso', 'width=600,height=700');
+
+      
+  //     if (ssoResponse.data.success && ssoResponse.data.redirect_url) {
+  //       // Open Discourse SSO in a new window
+  //       const ssoWindow = window.open(ssoResponse.data.redirect_url, 'discourse_sso', 'width=600,height=700');
         
-        // Check if window was blocked by popup blocker
-        if (!ssoWindow || ssoWindow.closed || typeof ssoWindow.closed === 'undefined') {
-          throw new Error('Please allow popups for this site to login to the community');
-        }
+  //       // Check if window was blocked by popup blocker
+  //       if (!ssoWindow || ssoWindow.closed || typeof ssoWindow.closed === 'undefined') {
+  //         throw new Error('Please allow popups for this site to login to the community');
+  //       }
         
-        // Poll to check if the SSO window is closed
-        const checkWindowClosed = setInterval(() => {
-          if (ssoWindow.closed) {
-            clearInterval(checkWindowClosed);
-            setAuthenticatingWithDiscourse(false);
+  //       // Poll to check if the SSO window is closed
+  //       const checkWindowClosed = setInterval(() => {
+  //         if (ssoWindow.closed) {
+  //           clearInterval(checkWindowClosed);
+  //           setAuthenticatingWithDiscourse(false);
             
-            // Now redirect to feed page after successful authentication
-            navigate(`/community/${id}/feed`);
-          }
-        }, 500);
-      } else {
-        throw new Error('Failed to initiate SSO login');
-      }
-    } catch (error) {
-      console.error('Error authenticating with Discourse:', error);
-      setAuthenticatingWithDiscourse(false);
-      setError(error.message || 'Authentication failed');
-    }
-  };
+  //           // Now redirect to feed page after successful authentication
+  //           navigate(`/community/${id}/feed`);
+  //         }
+  //       }, 500);
+  //     } else {
+  //       throw new Error('Failed to initiate SSO login');
+  //     }
+  //   } catch (error) {
+  //     console.error('Error authenticating with Discourse:', error);
+  //     setAuthenticatingWithDiscourse(false);
+  //     setError(error.message || 'Authentication failed');
+  //   }
+  // };
 
   const handleJoin = async () => {
     if (!user) {
