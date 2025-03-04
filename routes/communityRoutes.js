@@ -228,8 +228,6 @@ router.post('/community/join', async (req, res) => {
   }
 });
 
-module.exports = router;
-
 // Update this route
 router.get('/discourse/user/:communityId', async (req, res) => {
   try {
@@ -408,3 +406,5 @@ router.get("/search-communities", async (req, res) => {
     });
   }
 });
+
+module.exports = router;

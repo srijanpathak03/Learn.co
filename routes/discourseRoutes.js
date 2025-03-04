@@ -13,9 +13,25 @@ const querystring = require('querystring');
 router.post('/register', async (req, res) => {
   try {
     const { communityId, user } = req.body;
-    const { communityCollection } = await getCollections();
     
-    // Get community details to get Discourse URL
+    // Check if user is already registered
+    const existingMapping = await DiscourseUserMapping.findOne({
+      userId: user.uid,
+      communityId: new ObjectId(communityId)
+    });
+
+    if (existingMapping) {
+      return res.json({
+        success: true,
+        discourseUser: {
+          id: existingMapping.discourseUserId,
+          username: existingMapping.discourseUsername
+        }
+      });
+    }
+
+    // If not registered, continue with registration
+    const { communityCollection } = await getCollections();
     const community = await communityCollection.findOne({ 
       _id: new ObjectId(communityId) 
     });
@@ -33,26 +49,13 @@ router.post('/register', async (req, res) => {
     const timestamp = Date.now().toString(36);
     const username = `${baseUsername}_${timestamp}`.substring(0, 20);
 
-    const password = Array.from(crypto.randomBytes(16))
-      .map(byte => byte.toString(16).padStart(2, '0'))
-      .join('')
-      .substring(0, 20);
-
-    // Add logging for Discourse API request
-    console.log('Making Discourse API request:', {
-      url: `${community.discourse_url}/users.json`,
-      username,
-      email: user.email,
-      name: user.displayName || user.name
-    });
-
-    // Create the user
+    // Create the user in Discourse
     const createResponse = await axios.post(
       `${community.discourse_url}/users.json`,
       {
         name: user.displayName || user.name,
         email: user.email,
-        password: password,
+        password: crypto.randomBytes(16).toString('hex'),
         username: username,
         active: true,
         approved: true
@@ -60,139 +63,55 @@ router.post('/register', async (req, res) => {
       {
         headers: {
           'Api-Key': process.env.DISCOURSE_API_KEY,
-          'Api-Username': 'system',
-          'Content-Type': 'application/json'
+          'Api-Username': 'system'
         }
       }
     );
-
-    console.log('Create user response:', createResponse.data);
 
     if (!createResponse.data.success) {
       throw new Error(createResponse.data.message || 'Failed to create Discourse user');
     }
 
-    // Since the user_id is not in the response, we need to fetch it using the admin API
-    try {
-      const adminUserResponse = await axios.get(
-        `${community.discourse_url}/admin/users/list/active.json?filter=${username}`,
-        {
-          headers: {
-            'Api-Key': process.env.DISCOURSE_API_KEY,
-            'Api-Username': 'system'
-          }
+    // Get the user ID from admin API
+    const adminUserResponse = await axios.get(
+      `${community.discourse_url}/admin/users/list/active.json?filter=${username}`,
+      {
+        headers: {
+          'Api-Key': process.env.DISCOURSE_API_KEY,
+          'Api-Username': 'system'
         }
-      );
-
-      console.log('Admin user search response:', adminUserResponse.data);
-      
-      // Find the user in the response
-      const discourseUser = adminUserResponse.data.find(u => u.username === username);
-      
-      if (!discourseUser) {
-        throw new Error('Could not find created user in admin API');
       }
-      
-      const discourseUserId = discourseUser.id;
+    );
 
-      // Create the mapping with required fields
-      const mappingData = {
-        userId: user.uid,
-        communityId: community._id,
-        discourseUserId: discourseUserId,
-        discourseUsername: username,
-        discoursePassword: password
-      };
-
-      console.log('Creating DiscourseUserMapping:', {
-        userId: mappingData.userId,
-        communityId: mappingData.communityId,
-        discourseUserId: mappingData.discourseUserId,
-        discourseUsername: mappingData.discourseUsername
-      });
-
-      const mapping = new DiscourseUserMapping(mappingData);
-      await mapping.save();
-
-      // Update user's communities array
-      await User.findOneAndUpdate(
-        { email: user.email },
-        { $addToSet: { communities: community._id } }
-      );
-
-      // Update community's member count
-      await communityCollection.updateOne(
-        { _id: community._id },
-        { $inc: { members_count: 1 } }
-      );
-
-      res.json({
-        success: true,
-        discourse_user_id: discourseUserId,
-        discourse_username: username,
-        mapping_id: mapping._id,
-        active: createResponse.data.active,
-        message: createResponse.data.message
-      });
-    } catch (adminError) {
-      console.error('Error fetching user from admin API:', adminError);
-      
-      // As a fallback, create a mapping with a placeholder ID that we'll update later
-      const mappingData = {
-        userId: user.uid,
-        communityId: community._id,
-        discourseUserId: -1, // Placeholder ID
-        discourseUsername: username,
-        discoursePassword: password
-      };
-
-      const mapping = new DiscourseUserMapping(mappingData);
-      await mapping.save();
-
-      // Update user's communities array
-      await User.findOneAndUpdate(
-        { email: user.email },
-        { $addToSet: { communities: community._id } }
-      );
-
-      // Update community's member count
-      await communityCollection.updateOne(
-        { _id: community._id },
-        { $inc: { members_count: 1 } }
-      );
-
-      res.json({
-        success: true,
-        discourse_username: username,
-        mapping_id: mapping._id,
-        active: createResponse.data.active,
-        message: createResponse.data.message,
-        note: "User created but ID not retrieved. Will be updated on next login."
-      });
+    const discourseUser = adminUserResponse.data.find(u => u.username === username);
+    
+    if (!discourseUser) {
+      throw new Error('Could not find created user in admin API');
     }
 
-  } catch (error) {
-    console.error('Error in Discourse registration process:', {
-      error: error.message,
-      response: error.response?.data,
-      status: error.response?.status,
-      statusText: error.response?.statusText
+    // Create the mapping
+    const mapping = new DiscourseUserMapping({
+      userId: user.uid,
+      communityId: community._id,
+      discourseUserId: discourseUser.id,
+      discourseUsername: username
     });
 
-    // If there's a validation error from Discourse
-    if (error.response?.data?.errors) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: error.response.data.errors
-      });
-    }
+    await mapping.save();
 
-    // For other errors
+    res.json({
+      success: true,
+      discourseUser: {
+        id: discourseUser.id,
+        username: username
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in Discourse registration:', error);
     res.status(500).json({ 
       success: false, 
-      message: error.message,
-      details: error.response?.data
+      message: error.message 
     });
   }
 });
@@ -242,7 +161,7 @@ router.get('/user/:communityId', async (req, res) => {
       {
         headers: {
           'Api-Key': process.env.DISCOURSE_API_KEY,
-          'Api-Username': 'system'
+          'Api-Username': mapping.discourseUsername
         }
       }
     );
@@ -268,15 +187,23 @@ router.get('/user/:communityId', async (req, res) => {
 router.get('/sso/:communityId', async (req, res) => {
   try {
     const { sso, sig } = req.query;
-    const { communityId } = req.params;
-    
-    // Validate required parameters
+    // const { communityId } = req.params;
+    const communityId = new mongoose.Types.ObjectId('67c06f258d237ac66f25c765');
+    console.log("SSO",sso)
+    console.log("SIG:",sig)
+    console.log('Received communityId:', communityId);
+
     if (!sso || !sig) {
       return res.status(400).json({ success: false, message: 'Missing SSO parameters' });
     }
-
-    // Get community details
     const { communityCollection } = await getCollections();
+    if (!mongoose.Types.ObjectId.isValid(communityId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid community ID format' 
+      });
+    }
+    
     const community = await communityCollection.findOne({ 
       _id: new ObjectId(communityId) 
     });
@@ -284,13 +211,9 @@ router.get('/sso/:communityId', async (req, res) => {
     if (!community) {
       return res.status(404).json({ success: false, message: 'Community not found' });
     }
-
-    // Get the SSO secret from environment variables
     const discourseSecret = process.env.DISCOURSE_SSO_SECRET || 'thisisassosecretforautomiviecreator';
-    
     // Validate SSO signature
     const expectedSig = crypto.createHmac('sha256', discourseSecret).update(sso).digest('hex');
-
     if (sig !== expectedSig) {
       return res.status(400).json({ success: false, message: 'Invalid SSO signature' });
     }
@@ -301,7 +224,8 @@ router.get('/sso/:communityId', async (req, res) => {
     const returnSsoUrl = decodedSSO.return_sso_url;
     
     // Get user from session or request
-    const userId = req.session?.userId || req.query.userId;
+    // const userId = req.session?.userId || req.query.userId;
+    const userId = 'gkLbkS5zXDMoKRMSng6jJ0oCu8Y2';
     
     if (!userId) {
       // Redirect to login page if user is not logged in
@@ -315,6 +239,7 @@ router.get('/sso/:communityId', async (req, res) => {
     }
 
     // Get user mapping in Discourse
+    // Validate communityId format before creating ObjectId
     const mapping = await DiscourseUserMapping.findOne({
       userId,
       communityId: new ObjectId(communityId)
@@ -340,7 +265,9 @@ router.get('/sso/:communityId', async (req, res) => {
     const newSig = crypto.createHmac('sha256', discourseSecret).update(payload).digest('hex');
 
     // Redirect user to Discourse with signed payload
-    const redirectUrl = `${returnSsoUrl}?sso=${encodeURIComponent(payload)}&sig=${encodeURIComponent(newSig)}`;
+    // const redirectUrl = `${returnSsoUrl}?sso=${encodeURIComponent(payload)}&sig=${encodeURIComponent(newSig)}`;
+    // const redirectUrl = `http://forum.local/session/sso_login?sso=${encodeURIComponent(payload)}&sig=${encodeURIComponent(newSig)}`;
+    const redirectUrl = `${community.discourse_url}/session/sso_login?sso=${encodeURIComponent(payload)}&sig=${encodeURIComponent(newSig)}`;
     res.redirect(redirectUrl);
 
   } catch (error) {
@@ -349,84 +276,90 @@ router.get('/sso/:communityId', async (req, res) => {
   }
 });
 
-// Initiate SSO
-router.get('/initiate-sso/:communityId', async (req, res) => {
-  try {
-    const { communityId } = req.params;
-    const { userId } = req.query;
+// // Initiate SSO
+// router.get('/initiate-sso/:communityId', async (req, res) => {
+//   try {
+//     // const { communityId } = req.params;
+//     const communityId = new mongoose.Types.ObjectId('67c06f258d237ac66f25c765');
 
-    if (!userId) {
-      return res.status(400).json({ success: false, message: 'User ID is required' });
-    }
-    
-    const { communityCollection } = await getCollections();
-    const community = await communityCollection.findOne({ _id: new ObjectId(communityId) });
+//     console.log("Using hardcoded communityId:", communityId);
 
-    if (!community) {
-      return res.status(404).json({ success: false, message: 'Community not found' });
-    }
-    
-    req.session = req.session || {};
-    req.session.userId = userId;
+//     const { userId } = req.query;
 
-    // Check if user has a mapping for this community
-    const mapping = await DiscourseUserMapping.findOne({
-      userId,
-      communityId: new ObjectId(communityId)
-    });
+//     if (!userId) {
+//       return res.status(400).json({ success: false, message: 'User ID is required' });
+//     }
+    
+//     // Validate communityId format before creating ObjectId
+//     if (!mongoose.Types.ObjectId.isValid(communityId)) {
+//       return res.status(400).json({ 
+//         success: false, 
+//         message: 'Invalid community ID format' 
+//       });
+//     }
+    
+//     const { communityCollection } = await getCollections();
+//     const community = await communityCollection.findOne({ _id: new ObjectId(communityId) });
 
-    if (!mapping) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'User not registered with this community. Please join the community first.' 
-      });
-    }
+//     if (!community) {
+//       return res.status(404).json({ success: false, message: 'Community not found' });
+//     }
+    
+//     req.session = req.session || {};
+//     req.session.userId = userId;
 
-    // Get user details
-    const user = await User.findOne({ uid: userId });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
+//     // Check if user has a mapping for this community
+//     const mapping = await DiscourseUserMapping.findOne({
+//       userId,
+//       communityId: new ObjectId(communityId)
+//     });
 
-    // Create a nonce (random value)
-    const nonce = crypto.randomBytes(16).toString('hex');
-    
-    // Create the return URL (your server endpoint that will handle the SSO callback)
-    const returnUrl = `${req.protocol}://${req.get('host')}/discourse/sso/${communityId}`;
-    
-    // Create the payload
-    const payload = {
-      nonce: nonce,
-      return_sso_url: returnUrl,
-      external_id: userId
-    };
-    
-    // Base64 encode and URL encode the payload
-    const base64Payload = Buffer.from(querystring.stringify(payload)).toString('base64');
-    
-    // Get the SSO secret from environment variables
-    const discourseSecret = process.env.DISCOURSE_SSO_SECRET || 'thisisassosecretforautomiviecreator';
-    
-    // Create the signature
-    const sig = crypto.createHmac('sha256', discourseSecret).update(base64Payload).digest('hex');
-    
-    // Generate the redirect URL to Discourse with SSO parameters
-    const redirectUrl = `${community.discourse_url}/session/sso_login?sso=${encodeURIComponent(base64Payload)}&sig=${sig}`;
-    
-    // Return the redirect URL to the client
-    res.json({ 
-      success: true, 
-      redirect_url: redirectUrl 
-    });
+//     if (!mapping) {
+//       return res.status(404).json({ 
+//         success: false, 
+//         message: 'User not registered with this community. Please join the community first.' 
+//       });
+//     }
 
-  } catch (error) {
-    console.error('Error initiating SSO:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to initiate SSO',
-      error: error.message 
-    });
-  }
-});
+//     // Create a nonce (random value)
+//     const nonce = crypto.randomBytes(16).toString('hex');
+    
+//     // Create the return URL (your server endpoint that will handle the SSO callback)
+//     const returnUrl = `${req.protocol}://${req.get('host')}/discourse/sso/${communityId}`;
+    
+//     // Create the payload
+//     const payload = {
+//       nonce: nonce,
+//       return_sso_url: returnUrl,
+//       external_id: userId
+//     };
+    
+//     // Base64 encode and URL encode the payload
+//     const base64Payload = Buffer.from(querystring.stringify(payload)).toString('base64');
+    
+//     // Get the SSO secret from environment variables
+//     const discourseSecret = process.env.DISCOURSE_SSO_SECRET || 'thisisassosecretforautomiviecreator';
+    
+//     // Create the signature
+//     const sig = crypto.createHmac('sha256', discourseSecret).update(base64Payload).digest('hex');
+    
+//     // Generate the redirect URL to Discourse with SSO parameters
+//     const redirectUrl = `${community.discourse_url}/session/sso_login?sso=${encodeURIComponent(base64Payload)}&sig=${sig}`;
+    
+//     // Return the redirect URL to the client
+//     res.json({ 
+//       success: true, 
+//       redirect_url: redirectUrl 
+//     });
+
+//   } catch (error) {
+//     console.error('Error initiating SSO:', error);
+//     res.status(500).json({ 
+//       success: false, 
+//       message: 'Failed to initiate SSO',
+//       error: error.message 
+//     });
+//   }
+// });
 
 module.exports = router; 
