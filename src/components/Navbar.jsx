@@ -1,5 +1,5 @@
-import React, { useContext, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useContext, useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../provider/AuthProvider';
 import { LogOut, ChevronDown, Menu, X, User, Bell, BookOpen } from 'lucide-react';
 
@@ -56,21 +56,62 @@ const Navbar = () => {
         <div className="flex justify-between h-16 items-center">
           {/* Logo/Brand */}
           <div className="flex-shrink-0 flex items-center">
-            <h1 className="text-xl font-bold text-purple-600 cursor-pointer" 
-                onClick={() => navigate('/')}>
-              Learn.co
-            </h1>
+            <div 
+              className="flex items-center space-x-2 cursor-pointer" 
+              onClick={() => navigate('/')}
+            >
+              <BookOpen className="h-6 w-6 text-purple-600" />
+              <h1 className="text-xl font-bold text-purple-600">
+                Learn.co
+              </h1>
+            </div>
           </div>
-          <NavLink
-            to="/pricing"
-            className={({ isActive }) =>
-              `text-xl font-bold text-purple-600 cursor-pointer ${isActive ? 'text-purple-600 font-semibold' : 'font-medium'
-              }`
-            }
-          >
-            Pricing
-          </NavLink>
 
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex items-center space-x-6">
+            <a 
+              href="#" 
+              className={`text-sm font-medium ${
+                location.pathname === '/' 
+                  ? 'text-purple-600' 
+                  : 'text-gray-600 hover:text-purple-600'
+              } transition-colors`}
+              onClick={(e) => {
+                e.preventDefault();
+                navigate('/');
+              }}
+            >
+              Home
+            </a>
+            <a 
+              href="#" 
+              className={`text-sm font-medium ${
+                location.pathname === '/courses' 
+                  ? 'text-purple-600' 
+                  : 'text-gray-600 hover:text-purple-600'
+              } transition-colors`}
+              onClick={(e) => {
+                e.preventDefault();
+                navigate('/pricing');
+              }}
+            >
+              Pricing
+            </a>
+            <a 
+              href="#" 
+              className={`text-sm font-medium ${
+                location.pathname === '/communities' 
+                  ? 'text-purple-600' 
+                  : 'text-gray-600 hover:text-purple-600'
+              } transition-colors`}
+              onClick={(e) => {
+                e.preventDefault();
+                navigate('/');
+              }}
+            >
+              Communities
+            </a>
+          </div>
 
           {/* User Profile */}
           <div className="flex items-center space-x-4">
@@ -187,7 +228,7 @@ const Navbar = () => {
               className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-purple-50 rounded-md"
               onClick={(e) => {
                 e.preventDefault();
-                navigate('/');
+                navigate('/pricing');
                 setIsMobileMenuOpen(false);
               }}
             >

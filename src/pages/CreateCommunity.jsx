@@ -44,6 +44,17 @@ const CreateCommunity = () => {
     setLoading(true);
 
     try {
+      // Check subscription status first
+      const subscriptionCheck = await axios.get(
+        `${serverbaseURL}api/user-subscription/${user.uid}`
+      );
+
+      if (subscriptionCheck.data.subscriptionStatus !== 'active') {
+        alert('You need an active subscription to create communities. Redirecting to pricing...');
+        navigate('/pricing');
+        return;
+      }
+
       const formDataToSend = new FormData();
       Object.keys(formData).forEach(key => {
         if (key === 'price') {
@@ -85,7 +96,7 @@ const CreateCommunity = () => {
 
         <div className="bg-white rounded-lg shadow-sm p-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-6">Create Your Community</h1>
-          
+
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Community Image */}
             <div>
@@ -229,9 +240,8 @@ const CreateCommunity = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className={`w-full bg-gradient-to-r from-purple-600 to-blue-500 text-white py-3 px-6 rounded-lg font-medium hover:shadow-lg transition duration-200 ${
-                  loading ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
+                className={`w-full bg-gradient-to-r from-purple-600 to-blue-500 text-white py-3 px-6 rounded-lg font-medium hover:shadow-lg transition duration-200 ${loading ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
               >
                 {loading ? 'Creating Community...' : 'Create Community'}
               </button>
