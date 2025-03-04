@@ -8,6 +8,8 @@ import Login from '../pages/Login';
 import Register from '../pages/Register';
 import { useContext } from 'react';
 import { AuthContext } from '../provider/AuthProvider';
+import pricing from "../pages/pricing";
+import Pricing from "../pages/pricing";
 
 // Temporary mock user data to replace AuthContext
 const mockUser = {
@@ -42,6 +44,10 @@ const routes = [
   {
     path: "",
     element: <Forum />
+  },
+  {
+    path: "pricing",
+    element: <Pricing/>
   },
   {
     path: "community/:id",

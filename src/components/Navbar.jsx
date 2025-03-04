@@ -1,5 +1,5 @@
 import React, { useContext, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../provider/AuthProvider';
 import { LogOut, ChevronDown } from 'lucide-react';
 
@@ -18,12 +18,24 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           {/* Logo/Brand */}
-          <div className="flex-shrink-0 flex items-center">
-            <h1 className="text-xl font-bold text-purple-600 cursor-pointer" 
-                onClick={() => navigate('/')}>
+          <div className="flex-shrink-0 flex items-center ">
+            <h1 className="text-xl font-bold text-purple-600 cursor-pointer"
+              onClick={() => navigate('/')}>
               Learn.co
             </h1>
+
+
           </div>
+          <NavLink
+            to="/pricing"
+            className={({ isActive }) =>
+              `text-xl font-bold text-purple-600 cursor-pointer ${isActive ? 'text-purple-600 font-semibold' : 'font-medium'
+              }`
+            }
+          >
+            Pricing
+          </NavLink>
+
 
           {/* User Profile */}
           <div className="flex items-center space-x-4">
