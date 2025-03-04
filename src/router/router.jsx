@@ -10,6 +10,9 @@ import { useContext } from 'react';
 import { AuthContext } from '../provider/AuthProvider';
 import pricing from "../pages/pricing";
 import Pricing from "../pages/pricing";
+import CommunityAboutPage from '../pages/CommunityAboutPage';
+import CommunityCourses from '../pages/CommunityCourses';
+import ErrorPage from '../pages/ErrorPage';
 
 // Temporary mock user data to replace AuthContext
 const mockUser = {
@@ -35,35 +38,59 @@ const ProtectedRoute = ({ children }) => {
 const routes = [
   {
     path: "login",
-    element: <Login />
+    element: <Login />,
+    errorElement: <ErrorPage />
   },
   {
     path: "register",
-    element: <Register />
+    element: <Register />,
+    errorElement: <ErrorPage />
   },
   {
     path: "",
-    element: <Forum />
+    element: <Forum />,
+    errorElement: <ErrorPage />
   },
   {
     path: "pricing",
-    element: <Pricing/>
+    element: <Pricing />,
+    errorElement: <ErrorPage />
   },
   {
     path: "community/:id",
-    element: <ProtectedRoute><CommunityAbout /></ProtectedRoute>
+    element: <ProtectedRoute><CommunityAbout /></ProtectedRoute>,
+    errorElement: <ErrorPage />
   },
   {
     path: "community/:id/feed",
-    element: <ProtectedRoute><CommunityFeed /></ProtectedRoute>
+    element: <ProtectedRoute><CommunityFeed /></ProtectedRoute>,
+    errorElement: <ErrorPage />
   },
   {
     path: "community/:id/topic/:topicId",
-    element: <ProtectedRoute><PostDetail /></ProtectedRoute>
+    element: <ProtectedRoute><PostDetail /></ProtectedRoute>,
+    errorElement: <ErrorPage />
+  },
+  {
+    path: "community/:id/about",
+    element: <ProtectedRoute><CommunityAboutPage /></ProtectedRoute>,
+    errorElement: <ErrorPage />
+  },
+  {
+    path: "community/:id/courses",
+    element: <ProtectedRoute><CommunityCourses /></ProtectedRoute>,
+    errorElement: <ErrorPage />
   },
   {
     path: "create-community",
-    element: <ProtectedRoute><CreateCommunity /></ProtectedRoute>
+    element: <ProtectedRoute><CreateCommunity /></ProtectedRoute>,
+    errorElement: <ErrorPage />
+  },
+  {
+    // Catch all route for 404s
+    path: "*",
+    element: <ErrorPage />,
+    errorElement: <ErrorPage />
   }
 ];
 
