@@ -31,8 +31,8 @@ async function getDb() {
 async function getCollections() {
     const db = await getDb();
     return {
-        communityCollection: db.collection("communityCollection")
-
+        communityCollection: db.collection("communityCollection"),
+        courseCollection: db.collection("courseCollection")
     };
 }
 

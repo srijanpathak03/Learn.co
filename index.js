@@ -40,6 +40,7 @@ const payment = require('./routes/payment');
 
 
 const postRoutes = require('./routes/postRoutes');
+const courseRoutes = require('./routes/courseRoutes');
 // Use routes
 app.use('/', communityRoutes);
 app.use('/', authRoutes);
@@ -48,6 +49,7 @@ app.use('/', payment);
 
 
 app.use('/', postRoutes);
+app.use('/api', courseRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
