@@ -269,9 +269,10 @@ const CommunityAbout = () => {
                 <div>
                   <p className="text-sm text-gray-500">Access</p>
                   <p className="font-medium text-gray-900">
-                    {community.price?.type === 'Free' 
+                    {/* {community.price?.type === 'Free' 
                       ? 'Free Access' 
-                      : `$${community.price?.amount}/month`}
+                      : `$${community.price?.amount}/month`} */}
+                      Free Memberships
                   </p>
                 </div>
               </div>

@@ -179,10 +179,11 @@ const Forum = () => {
                     <div className="text-sm text-gray-600">
                       {community.members_count.toLocaleString()} Members
                     </div>
-                    <div className="text-sm font-semibold">
-                      {community.price?.type === 'Free' 
+                    <div className="text-sm font-semibold text-green-600">
+                      {/* {community.price?.type === 'Free' 
                         ? 'Free' 
-                        : `$${community.price?.amount}/month`}
+                        : `$${community.price?.amount}/month`} */}
+                        Free Menbership
                     </div>
                   </div>
                 </div>
