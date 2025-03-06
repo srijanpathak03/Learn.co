@@ -8,7 +8,7 @@ import Login from '../pages/Login';
 import Register from '../pages/Register';
 import { useContext } from 'react';
 import { AuthContext } from '../provider/AuthProvider';
-import Pricing from "../pages/pricing";
+import Pricing from "../pages/Pricing";
 import CommunityAboutPage from '../pages/CommunityAboutPage';
 import CommunityCourses from '../pages/CommunityCourses';
 import ErrorPage from '../pages/ErrorPage';
