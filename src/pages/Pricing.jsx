@@ -87,13 +87,13 @@ export default function Pricing() {
 
         try {
             const { data } = await axios.post(`${serverbaseURL}api/create-subscription`, {
-                plan_id: "plan_Q2Y5ga2DLydg42",
-                total_count: 12
+                plan_id: "plan_Q3kT6VgdpJ1ZMn",
+                total_count: 36
             });
             console.log("data", data)
 
             const options = {
-                key: "rzp_test_QzOk18rY5eZzwR",
+                key: "rzp_live_k9cKl94apbk7aE",
                 subscription_id: data.id,
                 name: 'AutoMovieCreator',
                 description: `Subscription for membership`,
@@ -105,7 +105,7 @@ export default function Pricing() {
                             razorpay_payment_id: response.razorpay_payment_id,
                             razorpay_subscription_id: response.razorpay_subscription_id,
                             razorpay_signature: response.razorpay_signature,
-                            plan_id: "plan_Q2Y5ga2DLydg42",
+                            plan_id: "plan_Q3kT6VgdpJ1ZMn",
                             planName: "Discourse Membership",
                             money: 1310,
                             email: user.email,
@@ -231,46 +231,22 @@ export default function Pricing() {
                         <div className="flex flex-col">
                             <p className="text-black text-[32px] leading-tight block text-center bg-opacity-100 pb-1 font-serif">Discourse Membership</p>
 
-                            <p className="mt-2  pt-1 text-center text-5xl font-extrabold text-black">₹1310 </p>
-                            {/* <p className="pt-1 text-center text-lg  text-gray-500 "> per monthly per member</p> */}
+                            <p className="mt-2 text-center  font-bold text-gray-500 text-3xl line-through">₹8715</p>
+                            <p className="mt-2 pt-1 text-center text-5xl font-extrabold text-black">₹2615</p>
+                            <p className="pt-1 text-center text-lg text-gray-500">per month (after 70% off)</p>
 
                             <div className="mt-6">
-                                {/* <select
-                    className="w-full p-2 border rounded bg-white text-gray-700"
-                    value={selectedCredits.credits}
-                    onChange={(e) => handleCreditChange(e, 'payAsYouGo')}
-                  >
-                    {creditOptions.map(option => (
-                      <option key={option.credits} value={option.credits}>
-                        {option.credits.toLocaleString()} Credits
-                      </option>
-                    ))}
-                  </select> */}
-                                {/* <CreditInfoDropdown
-                    isOpen={showPayAsYouGoInfo}
-                    onToggle={() => setShowPayAsYouGoInfo(!showPayAsYouGoInfo)}
-                  /> */}
                             </div>
 
                             <div className="mt-5">
                                 <div className="flex items-start mb-20 mt-4">
                                     <Check className="h-10 w-10 text-green-600 mt-1" />
                                     <p className="text-[#55595c] text-[15px] leading-[1.67] font-[500] ml-2">
-                                        Get a Discourse membership for just ₹1310 per yearly. We provide a fully hosted and automated community, so you don’t have to worry about setup or management.
+                                        Get a Discourse membership for just ₹2615 per month after a 70% discount. We provide a fully hosted and automated community, so you don’t have to worry about setup or management.
                                     </p>
                                 </div>
                             </div>
 
-                            {/* <button
-                                onClick={handleSubscription}
-                                disabled={!scriptLoaded || loading}
-                                className={`bg-gradient-to-r ${loading || !scriptLoaded
-                                    ? 'from-gray-400 to-gray-500 cursor-not-allowed'
-                                    : 'from-[#805af5] to-[#cd99ff] hover:from-[#6a3ec2] hover:to-[#a68cfc] '
-                                    } text-white font-medium sm:text-lg py-2 sm:py-2 px-3 sm:px-4 rounded-lg w-full leading-[40px] tracking-[0.5px] border-0 text-center inline-block hover:scale-105`}
-                            >
-                                {loading ? 'Processing...' : 'Subscribe Now'}
-                            </button> */}
                             <button
                                 onClick={handleSubscription}
                                 disabled={!scriptLoaded || loading}
@@ -281,7 +257,7 @@ export default function Pricing() {
                             >
                                 {loading ? 'Processing...' : 'Subscribe Now'}
                             </button>
-                            {/* Show cancel button if user already has an active subscription */}
+                            
                             {userDetails?.subscriptionStatus === 'active' && (
                                 <button
                                     onClick={handleCancelSubscription}
@@ -289,13 +265,12 @@ export default function Pricing() {
                                     className="mt-4 bg-red-500 hover:bg-red-600 text-white font-medium sm:text-lg py-2 px-3 rounded-lg w-full transition-colors"
                                 >
                                     {cancelLoading ? 'Processing...' : 'Cancel Subscription'}
-
                                 </button>
                             )}
-
                         </div>
                     </div>
                 </div>
+
 
 
                 <div className=" w-1/3 px-5">
