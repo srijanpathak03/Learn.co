@@ -38,9 +38,46 @@ const enqueueRequest = (fn) => {
   });
 };
 
+// Add a simple cache system
+const cache = {
+  topics: new Map(),
+  categories: null,
+  posts: new Map(),
+  categoryTopics: new Map(),
+  expiryTime: 5 * 60 * 1000, // 5 minutes cache expiry
+  
+  get(type, key) {
+    if (type === 'categories' && this.categories) {
+      if (Date.now() - this.categories.timestamp < this.expiryTime) {
+        return this.categories.data;
+      }
+    } else if (key) {
+      const cached = this[type].get(key);
+      if (cached && (Date.now() - cached.timestamp < this.expiryTime)) {
+        return cached.data;
+      }
+    }
+    return null;
+  },
+  
+  set(type, data, key) {
+    const cacheItem = { data, timestamp: Date.now() };
+    if (type === 'categories') {
+      this.categories = cacheItem;
+    } else if (key) {
+      this[type].set(key, cacheItem);
+    }
+    return data;
+  }
+};
+
 export const discourseService = {
   // Get all categories and latest topics
   getLatestTopics: async () => {
+    // Check cache first
+    const cachedData = cache.get('topics', 'latest');
+    if (cachedData) return cachedData;
+    
     return enqueueRequest(async () => {
       const [categoriesResponse, latestResponse] = await Promise.all([
         fetch('/api/categories.json', { headers }),
@@ -62,17 +99,24 @@ export const discourseService = {
         category: categories.category_list.categories.find(c => c.id === topic.category_id)
       }));
 
-      return {
+      // Cache the result before returning
+      return cache.set('topics', {
         categories: categories.category_list.categories,
         topics: topicsWithDetails
-      };
+      }, 'latest');
     });
   },
 
-  // Get single topic with details
+  // Get single topic with details - optimized to include posts
   getTopic: async (topicId) => {
+    // Check cache first
+    const cachedTopic = cache.get('topics', topicId);
+    if (cachedTopic) return cachedTopic;
+    
     return enqueueRequest(async () => {
-      const response = await fetch(`/api/t/${topicId}.json`, {
+      // Use the include_raw=true parameter to get post content
+      // and include_suggested=true to get suggested topics in one request
+      const response = await fetch(`/api/t/${topicId}.json?include_raw=true&include_suggested=true`, {
         headers
       });
 
@@ -80,31 +124,48 @@ export const discourseService = {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      return response.json();
+      const data = await response.json();
+      
+      // Cache individual posts from the topic to avoid fetching them separately
+      if (data.post_stream && data.post_stream.posts) {
+        data.post_stream.posts.forEach(post => {
+          cache.set('posts', post, post.id);
+        });
+      }
+      
+      // Cache the topic data
+      return cache.set('topics', data, topicId);
     });
   },
 
   // Get all categories
   getCategories: async () => {
-    try {
+    // Check cache first
+    const cachedCategories = cache.get('categories');
+    if (cachedCategories) return cachedCategories;
+    
+    return enqueueRequest(async () => {
       const response = await fetch('/api/categories.json', {
         method: "GET",
         headers,
       });
-      console.log("Categories Response:", response);
+      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      return response.json();
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-      throw error;
-    }
+      
+      const data = await response.json();
+      return cache.set('categories', data);
+    });
   },
 
   // Get topics for a specific category
   getCategoryTopics: async (categoryId) => {
-    try {
+    // Check cache first
+    const cachedCategoryTopics = cache.get('categoryTopics', categoryId);
+    if (cachedCategoryTopics) return cachedCategoryTopics;
+    
+    return enqueueRequest(async () => {
       // First get the category details to get the slug
       const categoryResponse = await fetch(`/api/c/${categoryId}/show.json`, {
         method: 'GET',
@@ -132,12 +193,8 @@ export const discourseService = {
       }
 
       const data = await response.json();
-      console.log('Category topics response:', data);
-      return data;
-    } catch (error) {
-      console.error('Error fetching category topics:', error);
-      throw error;
-    }
+      return cache.set('categoryTopics', data, categoryId);
+    });
   },
 
   // Create a new topic (post)
@@ -190,35 +247,45 @@ export const discourseService = {
         throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
       }
 
+      // After successful creation, invalidate relevant caches
+      cache.set('topics', null, 'latest');
+      cache.set('categoryTopics', null, category);
+
       return response.json();
     });
   },
 
   // Create a reply to a topic
   createReply: async ({ topic_id, raw, username }) => {
-    try {
-      const response = await fetch(`/api/posts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Api-Username': username
-        },
-        body: JSON.stringify({
-          topic_id,
-          raw,
-        }),
-      });
+    return enqueueRequest(async () => {
+      try {
+        const response = await fetch(`/api/posts`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Api-Key': API_KEY,
+            'Api-Username': username
+          },
+          body: JSON.stringify({
+            topic_id,
+            raw,
+          }),
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
+        }
+
+        // Invalidate topic cache after successful reply
+        cache.set('topics', null, topic_id);
+        
+        return response.json();
+      } catch (error) {
+        console.error('Error creating reply:', error);
+        throw error;
       }
-
-      return response.json();
-    } catch (error) {
-      console.error('Error creating reply:', error);
-      throw error;
-    }
+    });
   },
 
   // Like/Unlike a post
@@ -252,6 +319,9 @@ export const discourseService = {
             throw new Error(data.errors?.[0] || `HTTP error! status: ${response.status}`);
           }
 
+          // After successful action, invalidate post cache
+          cache.set('posts', null, id);
+
           return data;
         } catch (error) {
           throw error;
@@ -262,7 +332,11 @@ export const discourseService = {
 
   // Get post details including likes
   getPost: async (postId) => {
-    try {
+    // Check cache first
+    const cachedPost = cache.get('posts', postId);
+    if (cachedPost) return cachedPost;
+    
+    return enqueueRequest(async () => {
       const response = await fetch(`/api/posts/${postId}.json`, {
         method: 'GET',
         headers,
@@ -275,15 +349,14 @@ export const discourseService = {
 
       const data = await response.json();
       const likeAction = data.actions_summary?.find(action => action.id === 2);
-      return {
+      const postWithLikes = {
         ...data,
         like_count: likeAction?.count || 0,
         user_liked: likeAction?.acted || false
       };
-    } catch (error) {
-      console.error('Error getting post:', error);
-      throw error;
-    }
+      
+      return cache.set('posts', postWithLikes, postId);
+    });
   },
 
   // Get post actions (likes, etc.)
@@ -324,21 +397,39 @@ export const discourseService = {
 
   // Search topics and posts
   search: async (term) => {
-    try {
-      const response = await fetch(`/api/search.json?q=${encodeURIComponent(term)}`, {
-        method: 'GET',
-        headers,
-      });
+    return enqueueRequest(async () => {
+      try {
+        const response = await fetch(`/api/search.json?q=${encodeURIComponent(term)}`, {
+          method: 'GET',
+          headers,
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
+        }
+
+        return response.json();
+      } catch (error) {
+        console.error('Error searching:', error);
+        throw error;
       }
-
-      return response.json();
-    } catch (error) {
-      console.error('Error searching:', error);
-      throw error;
-    }
+    });
   },
+  
+  // Clear cache method for manual cache invalidation
+  clearCache: (type, key) => {
+    if (type === 'all') {
+      cache.topics.clear();
+      cache.posts.clear();
+      cache.categoryTopics.clear();
+      cache.categories = null;
+    } else if (type && key) {
+      cache[type].delete(key);
+    } else if (type === 'categories') {
+      cache.categories = null;
+    } else if (type) {
+      cache[type].clear();
+    }
+  }
 }; 
