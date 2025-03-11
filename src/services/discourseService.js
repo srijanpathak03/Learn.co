@@ -195,11 +195,14 @@ export const discourseService = {
   },
 
   // Create a reply to a topic
-  createReply: async ({ topic_id, raw }) => {
+  createReply: async ({ topic_id, raw, username }) => {
     try {
       const response = await fetch(`/api/posts`, {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'Api-Username': username
+        },
         body: JSON.stringify({
           topic_id,
           raw,
@@ -226,8 +229,8 @@ export const discourseService = {
           const response = await fetch('/api/post_actions.json', {
             method: 'POST',
             headers: {
-              ...headers,
-              'Api-Username': username,
+              'Content-Type': 'application/json',
+              'Api-Username': username
             },
             body: JSON.stringify({
               id: parseInt(id),
