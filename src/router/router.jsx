@@ -72,12 +72,27 @@ const routes = [
   },
   {
     path: "community/:id/about",
-    element: <ProtectedRoute><CommunityAboutPage /></ProtectedRoute>,
+    element: <ProtectedRoute><CommunityFeed /></ProtectedRoute>,
     errorElement: <ErrorPage />
   },
   {
     path: "community/:id/courses",
-    element: <ProtectedRoute><CommunityCourses /></ProtectedRoute>,
+    element: <ProtectedRoute><CommunityFeed /></ProtectedRoute>,
+    errorElement: <ErrorPage />
+  },
+  {
+    path: "community/:id/members",
+    element: <ProtectedRoute><CommunityFeed /></ProtectedRoute>,
+    errorElement: <ErrorPage />
+  },
+  {
+    path: "community/:id/leaderboards",
+    element: <ProtectedRoute><CommunityFeed /></ProtectedRoute>,
+    errorElement: <ErrorPage />
+  },
+  {
+    path: "community/:id/calendar",
+    element: <ProtectedRoute><CommunityFeed /></ProtectedRoute>,
     errorElement: <ErrorPage />
   },
   {

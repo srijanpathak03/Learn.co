@@ -45,6 +45,10 @@ const cache = {
   posts: new Map(),
   categoryTopics: new Map(),
   expiryTime: 5 * 60 * 1000, // 5 minutes cache expiry
+  users: new Map(),
+  members: new Map(),
+  leaderboard: new Map(),
+  badges: new Map(),
   
   get(type, key) {
     if (type === 'categories' && this.categories) {
@@ -417,6 +421,188 @@ export const discourseService = {
     });
   },
   
+  // Get user profile
+  getUserProfile: async (username) => {
+    // Check cache first
+    const cachedUser = cache.get('users', username);
+    if (cachedUser) return cachedUser;
+    
+    return enqueueRequest(async () => {
+      try {
+        const response = await fetch(`/api/users/${username}.json`, {
+          method: 'GET',
+          headers,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return cache.set('users', data, username);
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+        throw error;
+      }
+    });
+  },
+
+  // Get user activity (posts, topics, likes)
+  getUserActivity: async (username) => {
+    return enqueueRequest(async () => {
+      try {
+        const response = await fetch(`/api/user_actions.json?username=${username}`, {
+          method: 'GET',
+          headers,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        console.error('Error fetching user activity:', error);
+        throw error;
+      }
+    });
+  },
+
+  // Get all members of the community
+  getMembers: async (page = 0) => {
+    // Check cache first
+    const cachedMembers = cache.get('members', `page_${page}`);
+    if (cachedMembers) return cachedMembers;
+    
+    return enqueueRequest(async () => {
+      try {
+        // Using the directory endpoint to get users sorted by various criteria
+        const response = await fetch(`/api/directory_items.json?period=all&page=${page}`, {
+          method: 'GET',
+          headers,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return cache.set('members', data, `page_${page}`);
+      } catch (error) {
+        console.error('Error fetching members:', error);
+        throw error;
+      }
+    });
+  },
+
+  // Get leaderboard data (users sorted by various metrics)
+  getLeaderboard: async (period = 'monthly', order = 'likes_received') => {
+    // Valid periods: daily, weekly, monthly, quarterly, yearly, all
+    // Valid orders: likes_received, likes_given, topic_count, post_count, topics_entered, posts_read, days_visited
+    
+    // Check cache first
+    const cacheKey = `${period}_${order}`;
+    const cachedLeaderboard = cache.get('leaderboard', cacheKey);
+    if (cachedLeaderboard) return cachedLeaderboard;
+    
+    return enqueueRequest(async () => {
+      try {
+        const response = await fetch(`/api/directory_items.json?period=${period}&order=${order}`, {
+          method: 'GET',
+          headers,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return cache.set('leaderboard', data, cacheKey);
+      } catch (error) {
+        console.error('Error fetching leaderboard:', error);
+        throw error;
+      }
+    });
+  },
+
+  // Get user badges
+  getUserBadges: async (username) => {
+    return enqueueRequest(async () => {
+      try {
+        const response = await fetch(`/api/user-badges/${username}.json`, {
+          method: 'GET',
+          headers,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        console.error('Error fetching user badges:', error);
+        throw error;
+      }
+    });
+  },
+
+  // Get all available badges
+  getAllBadges: async () => {
+    // Check cache first
+    const cachedBadges = cache.get('badges', 'all');
+    if (cachedBadges) return cachedBadges;
+    
+    return enqueueRequest(async () => {
+      try {
+        const response = await fetch(`/api/badges.json`, {
+          method: 'GET',
+          headers,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return cache.set('badges', data, 'all');
+      } catch (error) {
+        console.error('Error fetching badges:', error);
+        throw error;
+      }
+    });
+  },
+
+  // Get user summary (includes various stats)
+  getUserSummary: async (username) => {
+    return enqueueRequest(async () => {
+      try {
+        const response = await fetch(`/api/users/${username}/summary.json`, {
+          method: 'GET',
+          headers,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.errors?.[0] || `HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        console.error('Error fetching user summary:', error);
+        throw error;
+      }
+    });
+  },
+
   // Clear cache method for manual cache invalidation
   clearCache: (type, key) => {
     if (type === 'all') {
@@ -424,6 +610,10 @@ export const discourseService = {
       cache.posts.clear();
       cache.categoryTopics.clear();
       cache.categories = null;
+      cache.users = new Map();
+      cache.members = new Map();
+      cache.leaderboard = new Map();
+      cache.badges = new Map();
     } else if (type && key) {
       cache[type].delete(key);
     } else if (type === 'categories') {
