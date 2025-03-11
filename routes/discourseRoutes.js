@@ -276,6 +276,45 @@ router.get('/sso/:communityId', async (req, res) => {
   }
 });
 
+router.get('/user-mapping', async (req, res) => {
+  try {
+    const { userId, communityId } = req.query;
+
+    if (!userId || !communityId) {
+      return res.status(400).json({
+        success: false,
+        message: 'userId and communityId are required'
+      });
+    }
+    const mapping = await DiscourseUserMapping.findOne({
+      userId,
+      communityId: new ObjectId(communityId)
+    });
+
+    if (!mapping) {
+      return res.status(404).json({
+        success: false,
+        message: 'Discourse user mapping not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      mapping: {
+        discourseUserId: mapping.discourseUserId,
+        discourseUsername: mapping.discourseUsername
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching user mapping:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch user mapping'
+    });
+  }
+});
+
 // // Initiate SSO
 // router.get('/initiate-sso/:communityId', async (req, res) => {
 //   try {
