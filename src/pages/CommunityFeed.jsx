@@ -2,11 +2,13 @@ import React, { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { serverbaseURL } from "../constant/index";
-import { MessageCircle, Users, Award, Settings, ThumbsUp, Eye } from 'lucide-react';
+import { MessageCircle, Users, Award, Settings, ThumbsUp, Eye, Plus, Edit, Trash, BookOpen, Play } from 'lucide-react';
 import { AuthContext } from '../provider/AuthProvider';
 import { discourseService } from '../services/discourseService';
 import CommunityMembers from '../components/CommunityMembers';
 import CommunityLeaderboard from '../components/CommunityLeaderboard';
+import CreateCourseModal from '../components/CreateCourseModal';
+import CourseViewer from '../components/CourseViewer';
 
 const CommunityFeed = () => {
   const { id } = useParams();
@@ -31,6 +33,11 @@ const CommunityFeed = () => {
   const [imagePreview, setImagePreview] = useState(null);
   const [discourseMapping, setDiscourseMapping] = useState(null);
   const [activeTab, setActiveTab] = useState('community');
+  const [courses, setCourses] = useState([]);
+  const [isCreator, setIsCreator] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [viewingCourse, setViewingCourse] = useState(null);
 
   useEffect(() => {
     if (!user) {
@@ -59,6 +66,9 @@ const CommunityFeed = () => {
         const communityResponse = await axios.get(`${serverbaseURL}community/${id}`);
         console.log('Community Response:', communityResponse.data);
         setCommunityData(communityResponse.data);
+        
+        // Check if user is creator
+        setIsCreator(communityResponse.data.creator.uid === user.uid);
         
         // Get user's Discourse mapping
         const mappingResponse = await axios.get(`${serverbaseURL}discourse/user/${id}`, {
@@ -416,6 +426,66 @@ const CommunityFeed = () => {
     navigate(path, { replace: true });
   };
 
+  // Add function to fetch courses
+  const fetchCourses = async () => {
+    if (activeTab !== 'courses') return;
+    
+    try {
+      setLoading(true);
+      const coursesRes = await fetch(
+        `${serverbaseURL}api/communities/${id}/courses`,
+        {
+          headers: {
+            Authorization: `Bearer ${user.token}`
+          }
+        }
+      );
+      if (!coursesRes.ok) throw new Error('Failed to fetch courses');
+      const coursesData = await coursesRes.json();
+      setCourses(coursesData);
+    } catch (error) {
+      console.error('Error fetching courses:', error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch courses when tab changes to courses
+  useEffect(() => {
+    if (activeTab === 'courses') {
+      fetchCourses();
+    }
+  }, [activeTab]);
+
+  // Add course management functions
+  const handleEditCourse = (course) => {
+    setSelectedCourse(course);
+    setShowCreateModal(true);
+  };
+
+  const handleDeleteCourse = async (courseId) => {
+    if (!window.confirm('Are you sure you want to delete this course?')) return;
+
+    try {
+      const response = await fetch(
+        `${serverbaseURL}api/communities/${id}/courses/${courseId}`,
+        { method: 'DELETE' }
+      );
+
+      if (!response.ok) throw new Error('Failed to delete course');
+      
+      fetchCourses();
+    } catch (error) {
+      console.error('Error deleting course:', error);
+      setError('Failed to delete course');
+    }
+  };
+
+  const handleViewCourse = (course) => {
+    setViewingCourse(course);
+  };
+
   // Render the appropriate content based on the active tab
   const renderTabContent = () => {
     switch (activeTab) {
@@ -735,9 +805,140 @@ const CommunityFeed = () => {
         );
       case 'courses':
         return (
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-2xl font-semibold mb-6">Community Courses</h2>
-            <p className="text-gray-600">Courses for this community will appear here.</p>
+          <div>
+            {/* Community Header */}
+            <div className="mb-8">
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                {communityData?.name} Courses
+              </h1>
+              <p className="text-gray-600">
+                Expand your knowledge with our curated learning paths
+              </p>
+            </div>
+
+            {/* Creator Actions */}
+            {isCreator && (
+              <div className="mb-8">
+                <button
+                  onClick={() => {
+                    setSelectedCourse(null);
+                    setShowCreateModal(true);
+                  }}
+                  className="bg-purple-600 text-white px-6 py-3 rounded-lg flex items-center hover:bg-purple-700 transition shadow-sm"
+                >
+                  <Plus className="w-5 h-5 mr-2" />
+                  Create New Course
+                </button>
+              </div>
+            )}
+
+            {/* Courses Grid */}
+            {courses.length === 0 ? (
+              <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+                <BookOpen className="w-16 h-16 text-purple-200 mx-auto mb-4" />
+                <h3 className="text-xl font-medium text-gray-900 mb-2">No courses available yet</h3>
+                <p className="text-gray-500 max-w-md mx-auto">
+                  {isCreator 
+                    ? "Start creating educational content for your community members by adding your first course."
+                    : "Check back later for new learning opportunities from this community."}
+                </p>
+                {isCreator && (
+                  <button
+                    onClick={() => {
+                      setSelectedCourse(null);
+                      setShowCreateModal(true);
+                    }}
+                    className="mt-6 bg-purple-600 text-white px-6 py-2 rounded-lg inline-flex items-center hover:bg-purple-700 transition"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create First Course
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {courses.map((course) => (
+                  <div key={course._id} className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition">
+                    {/* Course Thumbnail */}
+                    <div className="h-48 bg-purple-100 flex items-center justify-center">
+                      {course.thumbnail ? (
+                        <img 
+                          src={course.thumbnail} 
+                          alt={course.title} 
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <BookOpen className="w-16 h-16 text-purple-300" />
+                      )}
+                    </div>
+                    
+                    <div className="p-6">
+                      {/* Course Header */}
+                      <div className="flex justify-between items-start mb-4">
+                        <h3 className="text-xl font-semibold text-gray-900">{course.title}</h3>
+                        
+                        {/* Creator Actions */}
+                        {isCreator && (
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditCourse(course);
+                              }}
+                              className="text-blue-600 hover:text-blue-800 p-1"
+                              title="Edit Course"
+                            >
+                              <Edit className="w-5 h-5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteCourse(course._id);
+                              }}
+                              className="text-red-600 hover:text-red-800 p-1"
+                              title="Delete Course"
+                            >
+                              <Trash className="w-5 h-5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Course Description */}
+                      <p className="text-gray-600 mb-4 line-clamp-2">{course.description}</p>
+                      
+                      {/* Course Stats */}
+                      <div className="flex items-center text-sm text-gray-500 mb-6 space-x-4">
+                        <div className="flex items-center">
+                          <BookOpen className="w-4 h-4 mr-1" />
+                          <span>{course.sections?.length || 0} sections</span>
+                        </div>
+                        <div className="flex items-center">
+                          <Play className="w-4 h-4 mr-1" />
+                          <span>
+                            {course.sections?.reduce((total, section) => total + (section.videos?.length || 0), 0) || 0} videos
+                          </span>
+                        </div>
+                        {course.price > 0 ? (
+                          <div className="ml-auto font-medium text-purple-600">${course.price}</div>
+                        ) : (
+                          <div className="ml-auto font-medium text-green-600">Free</div>
+                        )}
+                      </div>
+                      
+                      {/* Action Button */}
+                      <button
+                        onClick={() => handleViewCourse(course)}
+                        className="w-full py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition flex items-center justify-center"
+                      >
+                        <Play className="w-4 h-4 mr-2" />
+                        Start Learning
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         );
       case 'calendar':
@@ -908,6 +1109,26 @@ const CommunityFeed = () => {
         {/* Render the appropriate tab content */}
         {renderTabContent()}
       </div>
+
+      {/* Add modals for course functionality */}
+      {showCreateModal && (
+        <CreateCourseModal
+          communityId={id}
+          onClose={() => {
+            setShowCreateModal(false);
+            setSelectedCourse(null);
+          }}
+          onCourseCreated={fetchCourses}
+          editCourse={selectedCourse}
+        />
+      )}
+
+      {viewingCourse && (
+        <CourseViewer
+          course={viewingCourse}
+          onClose={() => setViewingCourse(null)}
+        />
+      )}
     </div>
   );
 };
