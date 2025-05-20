@@ -12,6 +12,7 @@ import Pricing from "../pages/Pricing";
 import CommunityAboutPage from '../pages/CommunityAboutPage';
 import CommunityCourses from '../pages/CommunityCourses';
 import ErrorPage from '../pages/ErrorPage';
+import LiveStream from '../pages/LiveStream';
 
 // Temporary mock user data to replace AuthContext
 const mockUser = {
@@ -98,6 +99,11 @@ const routes = [
   {
     path: "create-community",
     element: <ProtectedRoute><CreateCommunity /></ProtectedRoute>,
+    errorElement: <ErrorPage />
+  },
+  {
+    path: "community/:id/livestream/:streamId",
+    element: <ProtectedRoute><LiveStream /></ProtectedRoute>,
     errorElement: <ErrorPage />
   },
   {

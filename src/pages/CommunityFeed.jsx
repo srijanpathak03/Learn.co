@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { serverbaseURL } from "../constant/index";
-import { MessageCircle, Users, Award, Settings, ThumbsUp, Eye, Plus, Edit, Trash, BookOpen, Play } from 'lucide-react';
+import { MessageCircle, Users, Award, Settings, ThumbsUp, Eye, Plus, Edit, Trash, BookOpen, Play, Calendar, Video, Clock, X } from 'lucide-react';
 import { AuthContext } from '../provider/AuthProvider';
 import { discourseService } from '../services/discourseService';
 import CommunityMembers from '../components/CommunityMembers';
@@ -38,6 +38,15 @@ const CommunityFeed = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [viewingCourse, setViewingCourse] = useState(null);
+  const [livestreams, setLivestreams] = useState([]);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [newLivestream, setNewLivestream] = useState({
+    title: '',
+    description: '',
+    scheduledFor: '',
+    channelName: ''
+  });
+  const [activeLivestream, setActiveLivestream] = useState(null);
 
   useEffect(() => {
     if (!user) {
@@ -484,6 +493,126 @@ const CommunityFeed = () => {
 
   const handleViewCourse = (course) => {
     setViewingCourse(course);
+  };
+
+  // Fetch livestreams when tab changes to calendar
+  useEffect(() => {
+    if (activeTab === 'calendar') {
+      fetchLivestreams();
+    }
+  }, [activeTab]);
+  
+  const fetchLivestreams = async () => {
+    try {
+      setLoading(true);
+      // Try to fetch livestreams, but handle 404 gracefully
+      try {
+        const response = await axios.get(`${serverbaseURL}api/communities/${id}/livestreams`);
+        setLivestreams(response.data || []);
+      } catch (error) {
+        // If API endpoint doesn't exist yet, just set empty array
+        console.log('Livestream API not available yet:', error);
+        setLivestreams([]);
+      }
+    } catch (error) {
+      console.error('Error fetching livestreams:', error);
+      // Don't show error to user
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleScheduleLivestream = async (e) => {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      
+      // Generate a unique channel name if not provided
+      const channelName = newLivestream.channelName || 
+        `${communityData.name.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}`;
+      
+      try {
+        // Try to create a livestream
+        const response = await axios.post(`${serverbaseURL}api/communities/${id}/livestreams`, {
+          ...newLivestream,
+          channelName,
+          creatorId: user.uid,
+          creatorName: user.displayName,
+          creatorPhoto: user.photoURL
+        });
+        
+        // If successful, add to list
+        setLivestreams([...livestreams, response.data]);
+      } catch (error) {
+        console.log('Livestream API not available yet:', error);
+        
+        // Since API isn't available, create a mock livestream object
+        const mockStream = {
+          _id: Date.now().toString(),
+          ...newLivestream,
+          channelName,
+          creatorId: user.uid,
+          creatorName: user.displayName,
+          creatorPhoto: user.photoURL,
+          createdAt: new Date().toISOString()
+        };
+        
+        // Add to local state
+        setLivestreams([...livestreams, mockStream]);
+        
+        // Show a message to the user
+        setError("Livestream scheduled locally. Backend API not available yet.");
+        setTimeout(() => setError(null), 5000);
+      }
+      
+      // Close modal and reset form regardless
+      setShowScheduleModal(false);
+      setNewLivestream({
+        title: '',
+        description: '',
+        scheduledFor: '',
+        channelName: ''
+      });
+    } catch (error) {
+      console.error('Error scheduling livestream:', error);
+      setError('Failed to schedule livestream. Please try again later.');
+      setTimeout(() => setError(null), 5000);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleDeleteLivestream = async (livestreamId) => {
+    if (!window.confirm('Are you sure you want to delete this livestream?')) return;
+    
+    try {
+      try {
+        // Try to delete from API
+        await axios.delete(`${serverbaseURL}api/communities/${id}/livestreams/${livestreamId}`);
+      } catch (error) {
+        console.log('Livestream API not available yet:', error);
+        // Show a message to the user
+        setError("Livestream deleted locally. Backend API not available yet.");
+        setTimeout(() => setError(null), 5000);
+      }
+      
+      // Remove from local state regardless
+      setLivestreams(livestreams.filter(stream => stream._id !== livestreamId));
+    } catch (error) {
+      console.error('Error deleting livestream:', error);
+      setError('Failed to delete livestream');
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+  
+  const startLivestream = (stream) => {
+    setActiveLivestream(stream);
+    navigate(`/community/${id}/livestream/${stream._id}`);
+  };
+  
+  const joinLivestream = (stream) => {
+    setActiveLivestream(stream);
+    navigate(`/community/${id}/livestream/${stream._id}`);
   };
 
   // Render the appropriate content based on the active tab
@@ -943,9 +1072,196 @@ const CommunityFeed = () => {
         );
       case 'calendar':
         return (
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-2xl font-semibold mb-6">Community Calendar</h2>
-            <p className="text-gray-600">Calendar events for this community will appear here.</p>
+          <div>
+            {/* Calendar Header */}
+            <div className="mb-8">
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                {communityData?.name} Livestreams
+              </h1>
+              <p className="text-gray-600">
+                Join live sessions or watch recordings from the community
+              </p>
+            </div>
+
+            {/* Creator Actions */}
+            {isCreator && (
+              <div className="mb-8">
+                <button
+                  onClick={() => setShowScheduleModal(true)}
+                  className="bg-purple-600 text-white px-6 py-3 rounded-lg flex items-center hover:bg-purple-700 transition shadow-sm"
+                >
+                  <Plus className="w-5 h-5 mr-2" />
+                  Schedule New Livestream
+                </button>
+              </div>
+            )}
+
+            {/* Livestreams List */}
+            {livestreams.length === 0 ? (
+              <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+                <Calendar className="w-16 h-16 text-purple-200 mx-auto mb-4" />
+                <h3 className="text-xl font-medium text-gray-900 mb-2">No livestreams scheduled</h3>
+                <p className="text-gray-500 max-w-md mx-auto">
+                  {isCreator 
+                    ? "Schedule your first livestream to engage with your community in real-time."
+                    : "Check back later for upcoming livestreams from this community."}
+                </p>
+                {isCreator && (
+                  <button
+                    onClick={() => setShowScheduleModal(true)}
+                    className="mt-6 bg-purple-600 text-white px-6 py-2 rounded-lg inline-flex items-center hover:bg-purple-700 transition"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Schedule First Livestream
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {livestreams.map((stream) => {
+                  const isLive = new Date(stream.scheduledFor) <= new Date() && 
+                                 new Date(stream.scheduledFor).getTime() + 3600000 > new Date().getTime();
+                  const isPast = new Date(stream.scheduledFor).getTime() + 3600000 < new Date().getTime();
+                  const isFuture = new Date(stream.scheduledFor) > new Date();
+                  
+                  return (
+                    <div key={stream._id} className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition">
+                      {/* Livestream Status Banner */}
+                      {isLive && (
+                        <div className="bg-red-600 text-white px-4 py-1 flex items-center justify-between">
+                          <div className="flex items-center">
+                            <span className="h-2 w-2 bg-white rounded-full mr-2 animate-pulse"></span>
+                            <span>LIVE NOW</span>
+                          </div>
+                          <span>{stream.viewerCount || 0} watching</span>
+                        </div>
+                      )}
+                      {isPast && !stream.recording && (
+                        <div className="bg-gray-600 text-white px-4 py-1">
+                          <span>ENDED</span>
+                        </div>
+                      )}
+                      {isPast && stream.recording && (
+                        <div className="bg-blue-600 text-white px-4 py-1">
+                          <span>RECORDING AVAILABLE</span>
+                        </div>
+                      )}
+                      {isFuture && (
+                        <div className="bg-green-600 text-white px-4 py-1">
+                          <span>UPCOMING</span>
+                        </div>
+                      )}
+                      
+                      {/* Livestream Thumbnail */}
+                      <div className="h-48 bg-purple-100 flex items-center justify-center relative">
+                        <Video className="w-16 h-16 text-purple-300" />
+                        {isLive && (
+                          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                            <button 
+                              onClick={() => joinLivestream(stream)}
+                              className="bg-red-600 text-white px-4 py-2 rounded-lg flex items-center hover:bg-red-700"
+                            >
+                              <Eye className="w-5 h-5 mr-2" />
+                              Join Stream
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="p-6">
+                        {/* Livestream Header */}
+                        <div className="flex justify-between items-start mb-4">
+                          <h3 className="text-xl font-semibold text-gray-900">{stream.title}</h3>
+                          
+                          {/* Creator Actions */}
+                          {isCreator && (
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteLivestream(stream._id);
+                                }}
+                                className="text-red-600 hover:text-red-800 p-1"
+                                title="Delete Livestream"
+                              >
+                                <Trash className="w-5 h-5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Livestream Description */}
+                        <p className="text-gray-600 mb-4 line-clamp-2">{stream.description}</p>
+                        
+                        {/* Livestream Details */}
+                        <div className="flex items-center text-sm text-gray-500 mb-6">
+                          <Clock className="w-4 h-4 mr-1" />
+                          <span>
+                            {new Date(stream.scheduledFor).toLocaleString()}
+                          </span>
+                        </div>
+                        
+                        {/* Action Button */}
+                        {isCreator && isLive && (
+                          <button
+                            onClick={() => startLivestream(stream)}
+                            className="w-full py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center justify-center"
+                          >
+                            <Video className="w-4 h-4 mr-2" />
+                            Start Streaming
+                          </button>
+                        )}
+                        {isCreator && isFuture && (
+                          <button
+                            disabled
+                            className="w-full py-3 bg-gray-300 text-gray-700 rounded-lg flex items-center justify-center cursor-not-allowed"
+                          >
+                            <Calendar className="w-4 h-4 mr-2" />
+                            Scheduled
+                          </button>
+                        )}
+                        {!isCreator && isLive && (
+                          <button
+                            onClick={() => joinLivestream(stream)}
+                            className="w-full py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center justify-center"
+                          >
+                            <Eye className="w-4 h-4 mr-2" />
+                            Join Stream
+                          </button>
+                        )}
+                        {!isCreator && isFuture && (
+                          <button
+                            disabled
+                            className="w-full py-3 bg-gray-300 text-gray-700 rounded-lg flex items-center justify-center cursor-not-allowed"
+                          >
+                            <Calendar className="w-4 h-4 mr-2" />
+                            Upcoming
+                          </button>
+                        )}
+                        {isPast && stream.recording && (
+                          <button
+                            onClick={() => navigate(`/community/${id}/recordings/${stream._id}`)}
+                            className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center justify-center"
+                          >
+                            <Play className="w-4 h-4 mr-2" />
+                            Watch Recording
+                          </button>
+                        )}
+                        {isPast && !stream.recording && (
+                          <button
+                            disabled
+                            className="w-full py-3 bg-gray-300 text-gray-700 rounded-lg flex items-center justify-center cursor-not-allowed"
+                          >
+                            <Video className="w-4 h-4 mr-2" />
+                            No Recording Available
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       case 'about':
@@ -1128,6 +1444,95 @@ const CommunityFeed = () => {
           course={viewingCourse}
           onClose={() => setViewingCourse(null)}
         />
+      )}
+
+      {/* Add Schedule Livestream Modal */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Schedule Livestream</h2>
+              <button onClick={() => setShowScheduleModal(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleScheduleLivestream} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Livestream Title
+                </label>
+                <input
+                  type="text"
+                  value={newLivestream.title}
+                  onChange={(e) => setNewLivestream({...newLivestream, title: e.target.value})}
+                  placeholder="Enter a title for your livestream"
+                  className="w-full p-2 border border-gray-300 rounded-lg"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={newLivestream.description}
+                  onChange={(e) => setNewLivestream({...newLivestream, description: e.target.value})}
+                  placeholder="What will you cover in this livestream?"
+                  className="w-full p-2 border border-gray-300 rounded-lg h-24"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Schedule Date & Time
+                </label>
+                <input
+                  type="datetime-local"
+                  value={newLivestream.scheduledFor}
+                  onChange={(e) => setNewLivestream({...newLivestream, scheduledFor: e.target.value})}
+                  className="w-full p-2 border border-gray-300 rounded-lg"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Channel Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={newLivestream.channelName}
+                  onChange={(e) => setNewLivestream({...newLivestream, channelName: e.target.value})}
+                  placeholder="Leave blank to auto-generate"
+                  className="w-full p-2 border border-gray-300 rounded-lg"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  A unique identifier for your stream. If left blank, one will be generated for you.
+                </p>
+              </div>
+              
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowScheduleModal(false)}
+                  className="px-4 py-2 text-gray-700 hover:text-gray-900"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                  disabled={loading}
+                >
+                  {loading ? 'Scheduling...' : 'Schedule Livestream'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
