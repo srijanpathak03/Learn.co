@@ -37,6 +37,7 @@ const communityRoutes = require('./routes/communityRoutes');
 const authRoutes = require('./routes/authRoutes');
 const discourseRoutes = require('./routes/discourseRoutes');
 const payment = require('./routes/payment');
+const liveStreamRoutes = require('./routes/liveStreamRoutes');
 
 
 const postRoutes = require('./routes/postRoutes');
@@ -50,6 +51,7 @@ app.use('/', payment);
 
 app.use('/', postRoutes);
 app.use('/api', courseRoutes);
+app.use('/',liveStreamRoutes)
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
